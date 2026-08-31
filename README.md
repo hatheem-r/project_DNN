@@ -334,6 +334,174 @@ lands in the same place.
 precision.** Lightweight models flag too many innocent words. Our Phase 2
 components should therefore target precision, not recall.
 
+## Step 3: vocabulary and word embeddings
+
+### What an embedding is
+
+A neural network can only do arithmetic. It cannot read Sinhala. So every word
+must first become a list of numbers, called a vector. That vector is the
+embedding.
+
+The numbers are not random. They were learned by a program that read a very
+large amount of Sinhala text and noticed which words appear in similar places.
+Words used in similar ways end up with similar vectors. So the model starts out
+already knowing something about Sinhala, instead of having to work it out from
+our 6,000 training tweets.
+
+Learning the vectors from our own data instead is possible but much worse. The
+SOLD paper tried it and scored 0.55, the worst of their three options.
+
+### What Step 3 did
+
+1. Listed every distinct word in the 6,000 train-part tweets and gave each an
+   ID number. That is the vocabulary: **28,456 words**.
+2. Opened the fastText Sinhala file (**808,044 words**, each with 300 numbers)
+   and pulled out the vectors for our words.
+3. Built a matrix of **28,456 rows by 300 columns**. Row n is the vector for
+   word n.
+4. Saved it to `artifacts/` for Step 4 to load.
+
+### Why fastText and not word2vec or GloVe
+
+fastText builds a word's vector out of its character chunks, not out of the
+whole word as one unit. Sinhala is agglutinative, so one root appears in many
+different forms with different endings. Character chunks let those forms share
+information. Published work finds fastText beats word2vec and GloVe for Sinhala
+for this reason, and the SOLD paper agrees: fastText 0.60, CBOW 0.58,
+learned-from-scratch 0.55 at token level.
+
+### How unknown words are handled
+
+Copied exactly from `get_emb_matrix()` in the SOLD codebase. The whole matrix
+starts filled with random numbers drawn from the same mean and standard
+deviation as the real vectors (mean -0.0002, std 0.0479). Then the rows of
+words that WERE found get overwritten with their real vector. So a word with no
+vector still gets numbers of a sensible size.
+
+### Results
+
+| Thing | Value |
+|---|---|
+| Embedding file | `cc.si.300.vec.gz` (fastText Common Crawl Sinhala) |
+| Words in the file | 808,044 |
+| Dimension | 300 |
+| Our vocabulary | 28,456 words, `min_freq=1`, from train-part only |
+| Matrix | 28,456 x 300 |
+| Words with a real vector | 23,314 (81.9%) |
+| Words with a random vector | 5,142 |
+
+Coverage per split. "Type" means distinct words. "Token" means word
+occurrences. Token coverage is higher because common words are usually covered.
+
+| Split | Types | Tokens | Type coverage | Token coverage |
+|---|---|---|---|---|
+| train-part | 28,454 | 141,646 | 81.94% | 92.11% |
+| validation | 10,574 | 34,724 | 55.47% | 81.47% |
+| test | 15,751 | 59,670 | 49.83% | 81.44% |
+
+**On test: 14.3% of word occurrences never appeared in training, and 48.7% of
+distinct words never appeared in training.**
+
+Those two numbers together say something specific. The unfamiliar words are
+mostly rare ones, so they are a small share of occurrences but nearly half of
+the dictionary. The model has to guess at almost half of the different words it
+meets at test time.
+
+### Vocabulary size versus minimum frequency
+
+`min_freq` drops rare words. Every dropped word becomes `<UNK>`.
+
+| min_freq | Vocabulary | Train token coverage | Validation token coverage |
+|---|---|---|---|
+| **1** | **28,456** | **100.00%** | **85.87%** |
+| 2 | 9,776 | 86.81% | 80.89% |
+| 3 | 5,934 | 81.39% | 77.51% |
+| 5 | 3,356 | 75.29% | 72.98% |
+
+Note how many words appear only once: dropping them cuts the vocabulary from
+28,456 to 9,776. We use `min_freq=1` for the baseline. It is a hyperparameter
+and will be tuned on validation in Step 5, never on test.
+
+## KEY OBSERVATION: fastText neighbours are word endings, not synonyms
+
+The nearest neighbours of a word, by cosine similarity in the embedding space:
+
+```
+කියලා     ->  කියලානේ, කියලාද, කියලාත්, කිව්වා, කියලත්
+කරන්න     ->  කරන්නත්, කරගන්න, වෙන්න, කරන්නම, කරන්නවා
+සක්කිලි   ->  සක්කිලිය, සක්කිලියා, සක්කිලියෙක්, සක්කිලියන්ගේ, අවජාතකයො
+පකයෙක්    ->  පබයෙක්, පරයෙක්, අපතයෙක්, කුබියෙක්, ගෝතයෙක්
+```
+
+These are not synonyms. **They are the same word with different endings.**
+`සක්කිලි` and its four neighbours are one slur in four grammatical forms.
+`කරන්න`, `කරන්නත්`, `කරන්නම`, `කරන්නවා` are one verb inflected four ways.
+
+**Why this matters.** Our word-level model treats each of those as a completely
+unrelated ID number. To the BiLSTM, `සක්කිලි` is word #4,102 and `සක්කිලියා` is
+word #19,887, and it has no idea they are related. It must learn each one
+separately from however few examples each has. And when it meets a form like
+`සක්කිලියන්ට` at test time that never appeared in training, it has nothing.
+
+This is very likely what much of our 48.7% unseen-type figure actually is: not
+new words, but **new forms of familiar words**.
+
+We now have three independent pieces of evidence for the subword component:
+
+1. 48.7% of distinct test words are unseen (measured, Step 3)
+2. fastText neighbours are dominated by morphological variants (observed, Step 3)
+3. Published work finds fastText beats word2vec and GloVe for Sinhala precisely
+   because it uses subword information
+
+Good news in the same output: `පකයෙක් -> පබයෙක්, පරයෙක්, අපතයෙක්, කුබියෙක්`
+shows different slurs sharing the `-යෙක්` ending. Offensive words cluster
+together in the vector space.
+
+### A hypothesis that turned out wrong
+
+We expected offensive words to be **under**-covered by fastText, on the theory
+that Common Crawl is clean web text where slang and profanity are rare.
+
+The opposite happened. Offensive words are covered at **96.2%** against 81.9%
+overall.
+
+But the comparison is confounded and we should not report it as it stands. The
+offensive set is filtered to words seen 3 or more times, while the 81.9%
+baseline includes every vocabulary word, thousands of which appear exactly once.
+Rare words are the ones fastText misses, so we may be measuring a frequency
+effect rather than an offensiveness effect.
+
+**TODO before the paper:** compute coverage for all words seen 3+ times and
+compare against the offensive words' 96.2%. If they are similar, the effect is
+purely frequency. If offensive words are still higher, that is a genuine
+finding. Owner: Person 2.
+
+### Known limitation to carry into Step 4
+
+5,142 vocabulary words have random vectors. If embeddings are **frozen**, which
+is what the baseline does and what the paper did, those words are stuck with
+meaningless numbers forever. The model can never learn them.
+
+Three candidate fixes, to be compared as a Step 5 ablation rather than decided
+now:
+
+1. Map any word without a real vector to `<UNK>`, so they share one consistent
+   representation instead of 5,142 different random ones.
+2. Keep them and unfreeze the embedding layer so the model can learn them.
+3. Keep them frozen and accept the noise. This is the current baseline.
+
+### Planned Phase 2 experiment, deliberately NOT used now
+
+fastText also ships a `.bin` model that can **generate** a vector for a word it
+has never seen, by combining that word's character chunks. That would fix much
+of our 14.3% unknown-token problem.
+
+We are not using it in the baseline, for two reasons. It is almost certainly not
+what the paper did, so it would break our reproduction. And more importantly it
+**is** a subword mechanism, which is our Phase 2 contribution. Using it now
+would fold our own contribution into the baseline and make our improvement look
+smaller than it is.
+
 ## What we are building (Phase 2)
 
 Four parts, added one at a time on top of the baseline.
@@ -371,17 +539,24 @@ Four parts, added one at a time on top of the baseline.
 ├── src/
 │   ├── data.py                 the ONLY place that loads the dataset
 │   ├── metrics.py              the ONLY place that calculates F1
+│   ├── embeddings.py           vocabulary and fastText loading
 │   ├── models/
 │   └── train.py
 ├── notebooks/
 │   ├── 01_data_exploration.py  Step 1 checks
-│   └── 02_metric_check.py      Step 2 trivial baselines
+│   ├── 02_metric_check.py      Step 2 baselines
+│   └── 03_embeddings.py        Step 3 vocabulary and vectors
 ├── tests/
 │   └── test_metrics.py         9 unit tests, must always pass
 └── results/
     ├── results.csv             every run we have ever done
     ├── step1_report.txt        output of the exploration script
-    └── step2_report.txt        output of the metric check
+    ├── step2_report.txt        output of the metric check
+    └── step3_report.txt        output of the embedding check
+
+Not committed (see .gitignore):
+  embeddings/   cc.si.300.vec.gz, several hundred MB
+  artifacts/    embedding_matrix.npy and vocab.txt, regenerable
 ```
 
 ## Rules for the team
@@ -403,7 +578,16 @@ pip install "datasets<3.0.0" pandas numpy pyarrow matplotlib
 python notebooks/01_data_exploration.py > results/step1_report.txt
 python tests/test_metrics.py
 python notebooks/02_metric_check.py > results/step2_report.txt
+
+# Step 3 needs the Sinhala fastText vectors first:
+mkdir -p embeddings && cd embeddings
+wget https://dl.fbaipublicfiles.com/fasttext/vectors-crawl/cc.si.300.vec.gz
+cd ..
+python notebooks/03_embeddings.py > results/step3_report.txt
 ```
+
+Run everything from the project root, not from inside `notebooks/`.
+Do not unzip the vector file. The loader reads `.gz` directly.
 
 ## Progress
 
@@ -412,7 +596,8 @@ python notebooks/02_metric_check.py > results/step2_report.txt
 - [x] **Step 2** Metric copied from the official code. 9 unit tests pass.
       Validation split created. Baselines run honestly.
       **Word list = 0.6521. This is the floor our model must beat.**
-- [ ] **Step 3** fastText embeddings loaded, unknown word rate confirmed
+- [x] **Step 3** fastText loaded. 28,456-word vocabulary, 81.9% real vectors.
+      Morphological evidence for the subword component found.
 - [ ] **Step 4** BiLSTM + CRF baseline built
 - [ ] **Step 5** Five seeds run, baseline scores about 0.60, config frozen
 

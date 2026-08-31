@@ -19,3 +19,7 @@ venv/
 .env
 
 .ipynb_checkpoints/
+
+embeddings/
+
+artifacts/

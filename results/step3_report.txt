@@ -1,0 +1,132 @@
+
+========================================================================
+0. DATA
+========================================================================
+train-part 6,000   validation 1,500   test 2,500
+Vocabulary is built from TRAIN-PART only. Building it from validation
+or test would leak information about data the model must not see.
+
+========================================================================
+1. VOCABULARY SIZE vs MINIMUM FREQUENCY
+========================================================================
+min_freq drops rare words from the vocabulary. Every dropped word becomes
+<UNK> at run time. Dropping too many loses information; keeping everything
+makes a huge embedding matrix full of words seen once.
+
+ min_freq     vocab  train tok cov   val tok cov
+-------------------------------------------------
+        1    28,456       100.00%       85.87%
+        2     9,776        86.81%       80.89%
+        3     5,934        81.39%       77.51%
+        5     3,356        75.29%       72.98%
+
+Note the gap between the two columns. Training coverage is near perfect by
+construction. Validation coverage is what matters, because it is what the
+model faces on data it has not memorised.
+
+Using min_freq=1 for the baseline (matches keeping all training
+words). This is a hyperparameter - tune it on validation in Step 5, not now.
+vocab size 28,456  (ids 0=<PAD>, 1=<UNK>)
+
+========================================================================
+2. LOAD fastText VECTORS
+========================================================================
+file: embeddings/cc.si.300.vec.gz
+  scanned 808,044 lines, matched 23,314 of 28,456 vocab words
+  dimension: 300
+
+========================================================================
+3. EMBEDDING MATRIX
+========================================================================
+  shape          (28456, 300)
+  words found    23,314 / 28,456  (81.93%)
+  words missing  5,142
+  random init    mean -0.0002, std 0.0479
+  PAD row is all zeros: True
+
+Missing words get a random vector with the same mean and standard deviation
+as the real ones. This copies get_emb_matrix() in the SOLD codebase exactly.
+
+========================================================================
+4. COVERAGE ON EACH SPLIT   <-- THE NUMBERS FOR THE PAPER
+========================================================================
+'type' = distinct words.  'token' = word occurrences.
+in_vocab   = the word has its own row in our vocabulary
+has_vector = that row holds a REAL fastText vector, not a random one
+
+split           types    tokens   type vec   token vec
+------------------------------------------------------
+train-part     28,454   141,646    81.94%     92.11%
+validation     10,574    34,724    55.47%     81.47%
+test           15,751    59,670    49.83%     81.44%
+
+READ THIS CAREFULLY.
+
+On test, 85.7% of word occurrences are in our vocabulary at all,
+and 81.4% have a real fastText vector.
+
+So roughly 14.3% of the words the model sees at test time are
+words it has never seen in training. It has no idea what they mean.
+Almost half of all DISTINCT test words are new.
+
+This is the whole argument for the subword component in Phase 2. If the
+model could look INSIDE a word - at its pieces - it could still make sense
+of a word form it has never met, because it would recognise the root.
+
+Write these numbers into the README and into the paper.
+
+========================================================================
+5. ARE THE OFFENSIVE WORDS COVERED?
+========================================================================
+Overall coverage is not enough. What matters is whether the words we
+actually need to detect are covered.
+
+  reliably offensive words (seen 3+, offensive >50%): 210
+  of those, having a real fastText vector: 202 (96.2%)
+  overall vocabulary coverage for comparison: 81.9%
+
+If offensive words are covered LESS than average, that is a real finding
+and belongs in the paper: swear words and slang are under-represented in
+the Common Crawl text fastText was trained on. It would also strengthen
+the subword argument further.
+
+========================================================================
+6. SANITY CHECK - DO THE VECTORS MEAN ANYTHING?
+========================================================================
+Nearest neighbours by cosine similarity. If the vectors are loaded
+correctly, neighbours should look related. If they look random, the
+file is wrong or misaligned.
+
+  කියලා              -> කියලානේ, කියලාද, කියලාත්, කිව්වා, කියලත්
+  වගේ                -> වගේම, නිකන්, හැබැයි, එහෙම, ඒත්
+  URL                -> ලින්ක්, link, Anchor, Link, page
+  නම්                -> හැබැයි, මොකද, ඒත්, නිසා, නැහැ
+  කරන්න              -> කරන්නත්, කරගන්න, වෙන්න, කරන්නම, කරන්නවා
+  පකයෙක්             -> පබයෙක්, පරයෙක්, අපතයෙක්, කුබියෙක්, ගෝතයෙක්
+  පර                 -> මල, ගල, ම්, තො, මු
+  සක්කිලි            -> සක්කිලිය, සක්කිලියා, සක්කිලියෙක්, සක්කිලියන්ගේ, අවජාතකයො
+
+========================================================================
+7. SAVE FOR STEP 4
+========================================================================
+  artifacts/embedding_matrix.npy
+  artifacts/vocab.txt
+
+Add artifacts/ and embeddings/ to .gitignore - they are large and
+regenerable. The CODE is what gets committed, not the outputs.
+
+========================================================================
+8. SUMMARY FOR THE README
+========================================================================
+
+embedding file        cc.si.300.vec.gz
+dimension             300
+vocabulary            28,456 words, min_freq=1, from train-part only
+matrix                28,456 x 300
+vector coverage       81.9% of vocabulary rows are real vectors
+OOV handling          random N(mean, std) of real vectors, copied from SOLD
+test token coverage   81.4% have a real vector
+test unseen tokens    14.3% never appeared in training
+test unseen types     48.7% of distinct words are new
+offensive word cov    96.2%
+
