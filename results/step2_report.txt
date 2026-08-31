@@ -1,0 +1,140 @@
+
+========================================================================
+0. SPLITS
+========================================================================
+official train : 7,500
+  train-part   : 6,000   used to build things
+  validation   : 1,500   used to CHOOSE things
+official test  : 2,500   locked, scored once at the end
+
+split seed = 42, validation fraction = 0.2
+Defined in src/data.py so every later model uses the identical split.
+
+positive token rate per split:
+  train-part  4.15%
+  validation  4.07%
+  test        3.80%
+train-part and validation should be close, or the split was unlucky.
+
+========================================================================
+A. FLAG EVERY TOKEN  ('All OFF' in the paper)   [no setting to choose]
+========================================================================
+OFFENSIVE  P=0.0380  R=1.0000  F1=0.0732   <- headline
+NOT        P=0.0000  R=0.0000  F1=0.0000
+macro F1=0.0366   weighted F1=0.0028
+offensive tokens: 2,268 / 59,670
+
+CHECK: precision must equal the test positive rate, because if you flag
+everything then precision is just the base rate. Recall must be exactly
+1.0000. The paper reports 0.03 precision for this same baseline, so our
+metric agrees with theirs.
+  precision = 0.0380   recall = 1.0000
+
+========================================================================
+B. FLAG NO TOKEN   [no setting to choose]
+========================================================================
+OFFENSIVE  P=0.0000  R=0.0000  F1=0.0000   <- headline
+NOT        P=0.9620  R=1.0000  F1=0.9806
+macro F1=0.4903   weighted F1=0.9434
+offensive tokens: 2,268 / 59,670
+
+CHECK: offensive F1 must be exactly 0.0000, while accuracy would be about
+96%. That is why accuracy is banned here.
+Note macro F1 is still 0.4903 for a model that does nothing.
+That is why we report the OFFENSIVE-CLASS F1, not a macro average.
+
+========================================================================
+C. RANDOM GUESSING   [rate taken from train, not test]
+========================================================================
+  rate used 0.0414   P=0.0403 R=0.0432 F1=0.0417
+
+CHECK: P and R both land near the positive rate. Any real model must
+be far above this.
+
+========================================================================
+D. WORD-LIST BASELINE   [settings chosen on VALIDATION]
+========================================================================
+A word's 'rate' is how reliably offensive it is in the training data:
+how many times it was labelled offensive, divided by how many times it
+appeared. A rate of 1.00 means it was offensive every single time.
+
+  threshold  how strict the list is. A high threshold keeps only words that
+             are almost always offensive: few flags, but usually correct.
+             A low threshold keeps anything ever marked offensive: many
+             flags, most of them wrong.
+  min_count  how many times a word must appear before we trust its rate.
+             A word seen once and offensive once has a rate of 1.00, which
+             proves nothing.
+
+Both are settings we CHOOSE, so both are searched on validation only.
+
+------------------------------------------------------------------------
+D1. SEARCH ON VALIDATION (test is not touched)
+------------------------------------------------------------------------
+min_cnt  thresh   words   val P   val R  val F1
+-----------------------------------------------
+      1     0.3   1,302   0.650   0.641   0.645
+      1     0.4   1,206   0.701   0.595   0.643
+      1     0.2   1,370   0.586   0.692   0.635
+      1     0.5   1,054   0.749   0.547   0.632
+      2     0.3     563   0.652   0.608   0.630
+      2     0.4     467   0.707   0.562   0.626
+      2     0.2     631   0.586   0.659   0.620
+      1     0.6   1,032   0.774   0.515   0.618
+      3     0.3     335   0.659   0.581   0.617
+      2     0.5     315   0.760   0.514   0.613
+      3     0.4     239   0.718   0.535   0.613
+      3     0.2     403   0.588   0.632   0.609
+      5     0.3     171   0.674   0.547   0.604
+      3     0.5     210   0.759   0.496   0.600
+      2     0.6     293   0.789   0.482   0.599
+
+45 settings tried, top 15 shown.
+
+CHOSEN ON VALIDATION: min_count=1  threshold=0.3  val F1=0.6453
+
+------------------------------------------------------------------------
+D2. REBUILD ON FULL TRAIN WITH THE CHOSEN SETTING
+------------------------------------------------------------------------
+word list size on full train: 1,506
+Standard practice: once the setting is fixed, use all the training data.
+
+------------------------------------------------------------------------
+D3. RUN ONCE ON TEST
+------------------------------------------------------------------------
+  precision 0.6361
+  recall    0.6689
+  F1        0.6521   <- REPORT THIS
+
+  validation F1 was 0.6453, test F1 is 0.6521 (gap +0.0068).
+  A small gap means validation predicts test well. A large gap means
+  the validation split is too small or unlucky.
+
+DO NOT go back and try more settings to push this number up. That would be
+the same mistake the earlier version of this file made.
+
+========================================================================
+SUMMARY - COPY INTO THE README
+========================================================================
+
+Baselines on the SOLD test split, offensive-class F1:
+
+  flag every token              0.0732
+  flag no token                 0.0000
+  random at train rate          0.0417
+  word list (val-chosen)        0.6521   <- THE FLOOR TO BEAT
+      setting: min_count=1, threshold=0.3, 1,506 words
+      test P=0.6361  R=0.6689
+
+Published, for comparison:
+  BiLSTM + CBOW                 0.58   (no pretrained model)
+  BiLSTM + fastText             0.60   (no pretrained model)
+  SinBERT                       0.62
+  XLM-T                         0.70
+  XLM-R                         0.72
+  XLM-R + TSD transfer          0.73   (best published)
+
+Our BiLSTM in Step 4 must clearly beat the word list, not just 0.60.
+A lookup table is the dumbest possible model. If a neural network cannot
+beat it, the neural network is broken or pointless.
+

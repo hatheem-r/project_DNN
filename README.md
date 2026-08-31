@@ -1,6 +1,3 @@
-Two conventions to agree on in the first meeting and then never revisit. First, main is always working; each person works on feature/<name> and merges by pull request that at least one other person reads. Second, nobody writes their own copy of the metric. Everything imports from src/metrics.py. The single most common way student teams produce contradictory results is three people quietly computing F1 three different ways.
-
-
 # Token-Level Sinhala Offensive Language Detection (no pretrained language models)
 
 CS3631 group project, University of Moratuwa.
@@ -171,6 +168,172 @@ The words most often marked offensive have offensive rates of 91% to 100%, over 
 198 appearances each. They are clear Sinhala swear words. This confirms the labels mean
 what they should.
 
+## Step 2: the evaluation metric
+
+### Why this step came before any model
+
+A metric is one number that says how good the model is. The danger is that
+there are several ways to calculate it, and they give different answers on the
+same predictions. If the SOLD authors used one way and we use another, our 0.65
+might really be worse than their 0.60 and we would never know. So we copied
+their method before writing any model.
+
+### The four numbers
+
+Say a tweet has 20 words. 3 are truly offensive. Our model flags 5 words, and 2
+of those 5 are correct.
+
+- True positives = 2. Flagged and correct.
+- False positives = 3. Flagged but innocent.
+- False negatives = 1. Offensive but missed.
+- **Precision** = 2/5 = 0.40. Of what we flagged, how much was right.
+- **Recall** = 2/3 = 0.67. Of what we should have caught, how much we caught.
+- **F1** = 0.50. Both combined. It punishes being lopsided.
+
+We never use accuracy. 96% of words are not offensive, so a model that says
+"not offensive" to everything is 96% accurate and useless.
+
+### What we found in the official SOLD code
+
+We cloned https://github.com/Sinhala-NLP/SOLD and read
+`experiments/token_level/print_stat.py` and `sinhala_mudes.py`. Three findings.
+
+**1. The headline number is the F1 of the offensive class, not macro F1.**
+The paper's text says "Macro F1" but the table numbers are per-class. Proof:
+the paper gives XLM-R P=0.68, R=0.76, F1=0.72, and the harmonic mean of 0.68
+and 0.76 is 0.718. A macro F1 over both classes would be about 0.85, because
+the not-offensive class is easy and huge. So we compare on offensive-class F1.
+
+**2. Their precision and recall are swapped.**
+`print_information(df, pred_column, real_column)` sets
+`predictions = df[pred_column]`, but it is called as
+`print_information(test_data, "labels", "predictions")`. So the gold column
+goes into the predictions variable and the model output goes into the real
+variable. sklearn then receives `(y_true=model_output, y_pred=gold)`, which is
+backwards. Swapping those turns recall into precision and precision into
+recall. **F1 is symmetric so F1 is unaffected.** We match their F1 and do not
+expect to match their printed P and R order. Our code computes P and R the
+correct way round.
+
+**3. Evaluation is pooled, not per-sentence.**
+They build one table with a row per token across all 2,500 test tweets and run
+one calculation. There is no per-tweet averaging.
+
+Two extra confirmations from their code:
+
+- `if len(labels) == 0: label 0 for every token`. The official code expands
+  empty rationales to zeros and keeps those rows, exactly matching our Step 1
+  decision.
+- `experiments/token_level/` contains only `sinhala_mudes.py` and
+  `sinhala_lime.py`, both transformer-based. There is no LSTM or CNN token-level
+  script anywhere in the repository. **Our research gap is confirmed from the
+  authors' own code**, which is stronger than saying we searched and found
+  nothing.
+
+### Our metric, written down
+
+Headline: **F1 of the offensive class**, pooled over all test tokens.
+Also reported: precision, recall, not-offensive F1, macro F1, weighted F1.
+Padding positions are excluded. Short predictions are padded with the negative
+class, the same as the official code.
+
+Across seeds: calculate F1 for each seed first, then average the F1 values.
+Never average precision and recall and then combine them. That gives a
+different number, and it is probably why the paper's BiLSTM rows do not match
+the harmonic mean of their own printed P and R.
+
+## The three splits
+
+SOLD ships with only train and test. **We create the validation split ourselves**
+by cutting 20% off train. It is defined once in `src/data.py` as
+`train_val_split()` with seed 42, so every model in the project is tuned and
+compared on identical data.
+
+| Split | Rows | Purpose | Positive token rate |
+|---|---|---|---|
+| train-part | 6,000 | Build things | 4.15% |
+| validation | 1,500 | **Choose** things | 4.07% |
+| test | 2,500 | Locked. Scored once, at the end | 3.80% |
+
+**The rule.** You may run something on test. You may not use test scores to
+*choose* anything. Choosing happens on validation.
+
+An earlier version of our metric script tried four word lists on test and
+reported the best one (0.631). That was test-set tuning and the number was
+void. It has been removed.
+
+## Baselines (verified, no neural network)
+
+Run with `python notebooks/02_metric_check.py`.
+
+Baselines A, B and C have no settings to choose, so running them directly on
+test is legitimate. Baseline D has settings, so they were chosen on validation.
+
+| Baseline | Precision | Recall | Offensive F1 |
+|---|---|---|---|
+| A. Flag every token | 0.0380 | 1.0000 | 0.0732 |
+| B. Flag no token | 0.0000 | 0.0000 | **0.0000** |
+| C. Random at 4.14% | 0.0403 | 0.0432 | 0.0417 |
+| **D. Word list (validation-chosen)** | **0.6361** | **0.6689** | **0.6521** |
+
+Word list setting, chosen on validation: `min_count=1`, `threshold=0.3`,
+1,506 words after rebuilding on the full train split.
+Validation F1 was 0.6453 and test F1 is 0.6521, a gap of only +0.0068.
+
+Checks that passed:
+
+- Flag-everything precision is 0.0380, exactly the test positive rate, and
+  recall is exactly 1.0000. The paper reports 0.03 precision for this same
+  baseline, so **our metric agrees with theirs**.
+- Flag-nothing gives offensive F1 exactly 0.0000 while accuracy would be 96%.
+  Its macro F1 is still 0.4903, which proves macro F1 over both classes
+  flatters a useless model. This is why we report offensive-class F1.
+- Random gives F1 0.0417, near the positive rate, as expected.
+- All 9 unit tests in `tests/test_metrics.py` pass.
+- The validation-to-test gap is tiny, so validation is a reliable guide for
+  every hyperparameter choice in Phase 2.
+
+## KEY FINDING: a word list beats three published models
+
+| Model | Offensive F1 | Learning involved? |
+|---|---|---|
+| Published BiLSTM + CBOW | 0.58 | Yes |
+| Published BiLSTM + fastText | 0.60 | Yes |
+| Published SinBERT | 0.62 | Yes |
+| **Our word list** | **0.6521** | **No. It is a lookup table.** |
+| Published XLM-T | 0.70 | Yes |
+| Published XLM-R | 0.72 | Yes |
+| Published XLM-R + TSD transfer | 0.73 | Yes |
+
+A list of 1,506 words with no neural network, no embeddings and no training
+beats the published non-transformer baseline by 0.05 and beats SinBERT, a
+transformer pretrained on Sinhala.
+
+**Three consequences.**
+
+**1. Our floor moved.** Beating 0.60 is no longer enough to justify a neural
+model. Our BiLSTM must clearly beat **0.6521**.
+
+**2. This is a result for the paper.** Nobody has published a lexicon baseline
+on SOLD at token level. It is the kind of finding reviewers remember.
+
+**3. It supports our main argument with a number.** Why does a trained BiLSTM
+score 0.60 when a word list scores 0.65? The likely answer is that the
+token-level BiLSTM in the SOLD paper was reported in passing and never properly
+tuned. Previously our claim that "the authors built a careful lightweight path
+for sentence level and never built one for token level" rested on the file
+structure of their repository. Now it also rests on evidence.
+
+The result is robust, not a fluke. The top 15 settings out of 45 all score
+between 0.599 and 0.645 on validation, so a wide range of sensible word lists
+lands in the same place.
+
+**Where the gap lives.** The published BiLSTM has precision 0.48 and recall
+0.74. Our word list has precision 0.636 and recall 0.669. XLM-R has precision
+0.68 and recall 0.76. Recall is similar across all of them. **The difference is
+precision.** Lightweight models flag too many innocent words. Our Phase 2
+components should therefore target precision, not recall.
+
 ## What we are building (Phase 2)
 
 Four parts, added one at a time on top of the baseline.
@@ -188,7 +351,9 @@ Four parts, added one at a time on top of the baseline.
 
 ## How we measure success
 
-- **Macro F1 on offensive tokens.** The main number. Directly comparable to the table above.
+- **F1 of the offensive class**, pooled over all test tokens. The main number.
+  Directly comparable to the table above. See the Step 2 section for why this is
+  the offensive-class F1 and not a macro average.
 - **Precision and recall reported separately.** The published baseline has precision 0.48
   and recall 0.74, while XLM-R has precision 0.68 and recall 0.76. So the gap is mostly a
   precision problem. We flag too many innocent words, not too few offensive ones.
@@ -209,10 +374,14 @@ Four parts, added one at a time on top of the baseline.
 │   ├── models/
 │   └── train.py
 ├── notebooks/
-│   └── 01_data_exploration.py  Step 1 checks
+│   ├── 01_data_exploration.py  Step 1 checks
+│   └── 02_metric_check.py      Step 2 trivial baselines
+├── tests/
+│   └── test_metrics.py         9 unit tests, must always pass
 └── results/
     ├── results.csv             every run we have ever done
-    └── step1_report.txt        output of the exploration script
+    ├── step1_report.txt        output of the exploration script
+    └── step2_report.txt        output of the metric check
 ```
 
 ## Rules for the team
@@ -232,13 +401,17 @@ python -m venv .venv
 source .venv/bin/activate
 pip install "datasets<3.0.0" pandas numpy pyarrow matplotlib
 python notebooks/01_data_exploration.py > results/step1_report.txt
+python tests/test_metrics.py
+python notebooks/02_metric_check.py > results/step2_report.txt
 ```
 
 ## Progress
 
 - [x] **Step 0** Repository set up
 - [x] **Step 1** Data loaded and verified. All checks passed.
-- [ ] **Step 2** Evaluation metric, matched to the SOLD paper
+- [x] **Step 2** Metric copied from the official code. 9 unit tests pass.
+      Validation split created. Baselines run honestly.
+      **Word list = 0.6521. This is the floor our model must beat.**
 - [ ] **Step 3** fastText embeddings loaded, unknown word rate confirmed
 - [ ] **Step 4** BiLSTM + CRF baseline built
 - [ ] **Step 5** Five seeds run, baseline scores about 0.60, config frozen

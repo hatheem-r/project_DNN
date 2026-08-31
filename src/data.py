@@ -150,6 +150,34 @@ def load_sold(split: str) -> pd.DataFrame:
     return df
 
 
+# --------------------------------------------------------------------------
+# train / validation split
+# --------------------------------------------------------------------------
+# SOLD ships only train and test. The validation split is ours, carved out of
+# train. EVERY component that needs to choose a hyperparameter must use THIS
+# function with THIS seed, so the lexicon baseline, the BiLSTM, and every later
+# model are all tuned and compared on identical data.
+#
+# The test split is never touched until a configuration is frozen.
+
+VAL_SEED = 42
+VAL_FRACTION = 0.2
+
+
+def train_val_split(train_df, val_fraction: float = VAL_FRACTION, seed: int = VAL_SEED):
+    """Split the official train split into train-part and validation.
+
+    Deterministic: the same seed always produces the same split. Record the
+    seed in the paper.
+    """
+    rng = np.random.default_rng(seed)
+    idx = rng.permutation(len(train_df))
+    n_val = int(len(train_df) * val_fraction)
+    val = train_df.iloc[idx[:n_val]].reset_index(drop=True)
+    tr = train_df.iloc[idx[n_val:]].reset_index(drop=True)
+    return tr, val
+
+
 def load_splits(drop_length_mismatch: bool = False):
     """Load train and test.
 
