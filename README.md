@@ -502,6 +502,126 @@ what the paper did, so it would break our reproduction. And more importantly it
 would fold our own contribution into the baseline and make our improvement look
 smaller than it is.
 
+## Step 4: the baseline model (BiLSTM + fastText + CRF)
+
+### What the model is
+
+Three parts stacked on top of each other.
+
+**Embedding layer.** Looks up the 300-number fastText vector for each word.
+Frozen, meaning the vectors never change during training. The model uses
+fastText's knowledge as given, which is what the paper did.
+
+**BiLSTM.** Reads the tweet word by word while keeping a running memory, then
+does it again backwards, and combines both directions. So the representation of
+word 7 knows about every word before AND after it. This matters because
+offensiveness is contextual: the SOLD paper shows most "offensive" keywords are
+only offensive 30-50% of the time. That is exactly why our word list stalled at
+0.65 - a lookup table cannot see context.
+
+**CRF.** Without it, every word is labelled independently and the model can
+produce incoherent sequences. A CRF scores the whole label sequence instead,
+learning that offensive words come in runs.
+
+### Padding and masking
+
+Neural networks need rectangular blocks of numbers, but tweets have different
+lengths. Short tweets get padded with a filler token up to the longest tweet
+**in that batch**. Those filler positions are not real words, so they are
+excluded from both the loss and the metric. Otherwise the model would get
+credit for correctly labelling empty space.
+
+**No truncation.** We changed the earlier `max_len = 80` decision. With
+per-batch padding a 134-token tweet costs almost nothing, while truncating at 80
+would silently delete the labels of about 1% of tweets.
+
+### Result
+
+| | Mean | Std |
+|---|---|---|
+| Test offensive precision | 0.7558 | 0.0130 |
+| Test offensive recall | 0.4581 | 0.0241 |
+| **Test offensive F1** | **0.5701** | **0.0178** |
+| Validation offensive F1 | 0.5708 | 0.0145 |
+
+Per-seed test F1: 0.5904, 0.5490, 0.5545, 0.5740, 0.5823.
+Five seeds, F1 computed per seed then averaged.
+Training time 873s per seed on Apple MPS.
+
+Published BiLSTM + fastText is 0.60. **We are at 0.5701, within the acceptable
+reproduction range.** Phase 1 exit criterion met.
+
+## KEY FINDING: our precision and recall confirm the swapped-argument bug
+
+In Step 2 we found by reading the SOLD source that their evaluation passes
+`(y_true=model_output, y_pred=gold)` to sklearn, which is backwards, and that
+this swaps precision and recall while leaving F1 unchanged. We predicted their
+published precision and recall were reversed.
+
+| | Precision | Recall | F1 |
+|---|---|---|---|
+| **Our BiLSTM** | **0.7558** | **0.4581** | 0.5701 |
+| Published, as printed | 0.48 | 0.74 | 0.60 |
+| Published, **un-swapped** | **0.74** | **0.48** | 0.60 |
+
+Our independent reproduction lands almost exactly on their un-swapped values.
+
+**We now have two independent lines of evidence for the same claim**: one from
+reading their code, one from reproducing their model and landing in the
+mirror-image position. This belongs in the paper as a correction for anyone else
+using this dataset.
+
+It also tells us something practical: our model is not broken and is not
+behaving differently from theirs. It is a high-precision, low-recall model,
+exactly as theirs was. The remaining 0.03 gap is not an architecture problem.
+
+### Where the remaining 0.03 comes from
+
+**1. We train on 6,000 tweets, they trained on 7,500.** We carved 1,500 off for
+validation; they almost certainly used the full official split. That is 20% less
+data. Fix: choose hyperparameters on validation, then rebuild on the full 7,500
+with those settings and score test once - the same protocol we used for the word
+list.
+
+**2. The models are stopping too early.** Seed 4 ran to the 30-epoch limit and
+its best score was at epoch 30, still improving when we cut it off. Validation
+F1 is noisy on this task, swinging eight points between adjacent epochs
+(seed 3: 0.5544, 0.4633, 0.4936, 0.4808, 0.5497). With `patience=5` a run can be
+killed by noise while still trending up. The epoch counts confirm it: 25, 13,
+18, 30, 21 for identical configurations. **Fix: `--epochs 60 --patience 12`.**
+
+**3. Recall was still climbing.** Across every seed, precision stays flat around
+0.75-0.84 while recall grinds upward. The model was learning to fire more often
+and had not finished.
+
+### Parameter count - the efficiency claim
+
+| | Count |
+|---|---|
+| Total | 8,724,458 |
+| **Trainable** | **187,658** |
+| Frozen (fastText matrix) | 8,536,800 |
+
+Against XLM-R-large at roughly 560,000,000 parameters:
+
+- **64x smaller** by total parameters
+- **~3,000x smaller** by trainable parameters
+
+Report both, and state clearly that the embedding matrix is a frozen lookup
+table rather than a learned component. The honesty costs nothing and the numbers
+are still striking.
+
+### Known issue: speed
+
+873 seconds per seed is 73 minutes for five seeds. Too slow for Phase 2, where
+dozens of ablation configurations each need five seeds. MPS is often slower than
+CPU for small LSTMs because of kernel-launch overhead, and CRF decoding does not
+parallelise well.
+
+To try, in order: `--batch-size 64`, then forcing CPU to compare, then Colab's
+free T4 GPU. Owner: Person 5. A 3x speedup pays for itself many times over in
+Phase 2.
+
 ## What we are building (Phase 2)
 
 Four parts, added one at a time on top of the baseline.
@@ -540,19 +660,22 @@ Four parts, added one at a time on top of the baseline.
 │   ├── data.py                 the ONLY place that loads the dataset
 │   ├── metrics.py              the ONLY place that calculates F1
 │   ├── embeddings.py           vocabulary and fastText loading
-│   ├── models/
-│   └── train.py
+│   ├── dataset.py              padding, masking, batching
+│   ├── model.py                BiLSTM + CRF
+│   └── train.py                training loop, seeding, early stopping
 ├── notebooks/
 │   ├── 01_data_exploration.py  Step 1 checks
 │   ├── 02_metric_check.py      Step 2 baselines
-│   └── 03_embeddings.py        Step 3 vocabulary and vectors
+│   ├── 03_embeddings.py        Step 3 vocabulary and vectors
+│   └── 04_baseline.py          Step 4 BiLSTM baseline
 ├── tests/
 │   └── test_metrics.py         9 unit tests, must always pass
 └── results/
     ├── results.csv             every run we have ever done
     ├── step1_report.txt        output of the exploration script
     ├── step2_report.txt        output of the metric check
-    └── step3_report.txt        output of the embedding check
+    ├── step3_report.txt        output of the embedding check
+    └── step4_report.txt        output of the baseline run
 
 Not committed (see .gitignore):
   embeddings/   cc.si.300.vec.gz, several hundred MB
@@ -584,6 +707,12 @@ mkdir -p embeddings && cd embeddings
 wget https://dl.fbaipublicfiles.com/fasttext/vectors-crawl/cc.si.300.vec.gz
 cd ..
 python notebooks/03_embeddings.py > results/step3_report.txt
+
+# Step 4 - run in this order, do not skip to the last one
+pip install torch pytorch-crf
+python notebooks/04_baseline.py --no-crf --seeds 1 --epochs 10 --tag smoke
+python notebooks/04_baseline.py --seeds 1 --epochs 10 --tag crf
+python notebooks/04_baseline.py --epochs 60 --patience 12 > results/step4_report.txt
 ```
 
 Run everything from the project root, not from inside `notebooks/`.
@@ -598,8 +727,10 @@ Do not unzip the vector file. The loader reads `.gz` directly.
       **Word list = 0.6521. This is the floor our model must beat.**
 - [x] **Step 3** fastText loaded. 28,456-word vocabulary, 81.9% real vectors.
       Morphological evidence for the subword component found.
-- [ ] **Step 4** BiLSTM + CRF baseline built
-- [ ] **Step 5** Five seeds run, baseline scores about 0.60, config frozen
+- [x] **Step 4** BiLSTM + CRF baseline reproduced. **0.5701 +/- 0.0178** over
+      5 seeds. Precision/recall confirm the swapped-argument bug.
+- [ ] **Step 5** Re-run with `--epochs 60 --patience 12`, refit on full train,
+      freeze the config, tag the commit.
 
 ## Data source
 

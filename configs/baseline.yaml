@@ -1,0 +1,42 @@
+# Baseline configuration - Phase 1 Step 4
+# Reproduces the SOLD paper's BiLSTM + fastText token-level model.
+# Every value here is a decision. Do not hardcode any of them in the code.
+
+data:
+  dataset: sinhala-nlp/SOLD
+  val_seed: 42            # defined in src/data.py, shared by every experiment
+  val_fraction: 0.2
+  truncate: null          # no truncation; dynamic padding to the batch maximum
+
+vocab:
+  min_freq: 1             # hyperparameter - tune on validation, never on test
+  source: train-part      # never validation, never test
+
+embeddings:
+  file: embeddings/cc.si.300.vec.gz
+  dim: 300
+  freeze: true            # what the paper did
+  oov_init: normal        # N(mean, std) of real vectors, as in SOLD's get_emb_matrix
+
+model:
+  hidden_size: 64         # from the SOLD paper
+  num_layers: 1
+  bidirectional: true
+  dropout: 0.5
+  use_crf: true
+
+training:
+  optimizer: adam
+  lr: 0.001
+  batch_size: 32
+  max_epochs: 30
+  patience: 5
+  grad_clip: 5.0
+  class_weights: false    # baseline uses plain cross-entropy
+  select_on: val_offensive_f1
+
+evaluation:
+  metric: offensive_class_f1
+  pooling: all test tokens, not per sentence
+  seeds: [1, 2, 3, 4, 5]
+  report: mean and std of per-seed F1
