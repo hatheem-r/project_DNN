@@ -23,3 +23,5 @@ venv/
 embeddings/
 
 artifacts/
+
+__pycache__/
