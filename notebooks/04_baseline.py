@@ -201,15 +201,15 @@ training time         {statistics.mean(times):.0f}s per seed on {device}
 
 
 # 1. Simplest possible version. Confirms the pipeline works.
-python notebooks/04_baseline.py --no-crf --seeds 1 --epochs 10 --tag smoke
+# python notebooks/04_baseline.py --no-crf --seeds 1 --epochs 10 --tag smoke
 
-# 2. Add the CRF. Score should go up.
-python notebooks/04_baseline.py --seeds 1 --epochs 10 --tag crf
+# # 2. Add the CRF. Score should go up.
+# python notebooks/04_baseline.py --seeds 1 --epochs 10 --tag crf
 
-# 3. Full run, five seeds.
-python notebooks/04_baseline.py > results/step4_report.txt
+# # 3. Full run, five seeds.
+# python notebooks/04_baseline.py > results/step4_report.txt
 
-python notebooks/04_baseline.py --epochs 60 --patience 12 --tag tuned
+# python notebooks/04_baseline.py --epochs 60 --patience 12 --tag tuned
 
 
 
