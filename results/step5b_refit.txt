@@ -1,0 +1,119 @@
+
+========================================================================
+0. SETUP
+========================================================================
+device: mps
+train 7,500 (FULL official split)   test 2,500
+No validation split. Fixed epoch budget instead of early stopping.
+
+vocabulary rebuilt from full train: 33,006 words
+(larger than the 28,456 from train-part - correct, we have more data now)
+
+loading vectors from embeddings/cc.si.300.vec.gz
+  scanned 808,044 lines, matched 26,668 of 33,006 vocab words
+  matrix (33006, 300), real vectors for 80.8% of rows
+
+config: epochs=30 (fixed)  batch=32  crf=True  hidden=64  lr=0.001
+
+parameters:
+  total                        10,089,458
+  trainable                       187,658
+  frozen                        9,901,800
+  embedding                     9,901,800
+  non_embedding_trainable         187,658
+
+========================================================================
+1. TRAIN
+========================================================================
+
+--- seed 1 ---
+    epoch  5/30  loss 2.0089
+    epoch 10/30  loss 1.8167
+    epoch 15/30  loss 1.7209
+    epoch 20/30  loss 1.6487
+    epoch 25/30  loss 1.6022
+    epoch 30/30  loss 1.5190
+    TEST  P 0.7608  R 0.4797  F1 0.5884   (1697s)
+
+--- seed 2 ---
+    epoch  5/30  loss 1.9908
+    epoch 10/30  loss 1.8232
+    epoch 15/30  loss 1.7285
+    epoch 20/30  loss 1.6523
+    epoch 25/30  loss 1.5861
+    epoch 30/30  loss 1.5026
+    TEST  P 0.7182  R 0.5326  F1 0.6116   (1674s)
+
+--- seed 3 ---
+    epoch  5/30  loss 2.0040
+    epoch 10/30  loss 1.8294
+    epoch 15/30  loss 1.7378
+    epoch 20/30  loss 1.6576
+    epoch 25/30  loss 1.6004
+    epoch 30/30  loss 1.5147
+    TEST  P 0.7517  R 0.4991  F1 0.5999   (1652s)
+
+--- seed 4 ---
+    epoch  5/30  loss 1.9811
+    epoch 10/30  loss 1.8199
+    epoch 15/30  loss 1.7258
+    epoch 20/30  loss 1.6650
+    epoch 25/30  loss 1.5735
+    epoch 30/30  loss 1.5290
+    TEST  P 0.7493  R 0.4956  F1 0.5966   (1216s)
+
+--- seed 5 ---
+    epoch  5/30  loss 2.0168
+    epoch 10/30  loss 1.8330
+    epoch 15/30  loss 1.7480
+    epoch 20/30  loss 1.6751
+    epoch 25/30  loss 1.5969
+    epoch 30/30  loss 1.5457
+    TEST  P 0.7457  R 0.4824  F1 0.5858   (1098s)
+
+========================================================================
+2. RESULT
+========================================================================
+metric                         mean      std
+--------------------------------------------
+offensive_precision          0.7452   0.0161
+offensive_recall             0.4979   0.0211
+offensive_f1                 0.5965   0.0103
+
+per-seed test F1: 0.5884, 0.6116, 0.5999, 0.5966, 0.5858
+mean time: 1468s per seed
+
+COMPARISON
+
+  full-train refit (7,500)     0.5965
+  train-part only (6,000)      0.5847
+  published BiLSTM + fastText  0.60
+  our word list                0.6521
+  published SinBERT            0.62
+  published XLM-R              0.72
+
+  change from more data:       +0.0118
+
+More data helped, as expected. Report this as the final Phase 1 baseline.
+
+========================================================================
+3. FINAL PHASE 1 BASELINE - FOR THE README
+========================================================================
+
+model                 BiLSTM + fastText + CRF
+trained on            7,500 tweets (full official train split)
+epochs                30 fixed, budget taken from validation runs
+batch size            32
+vocabulary            33,006 words, min_freq=1, from full train
+embeddings            300d fastText, frozen, 80.8% real vectors
+seeds                 [1, 2, 3, 4, 5]
+
+test precision        0.7452
+test recall           0.4979
+TEST OFFENSIVE F1     0.5965 +/- 0.0103
+
+parameters            10,089,458 total, 187,658 trainable
+time                  1468s per seed on mps
+
+PHASE 2 MUST BEAT: 0.6521
+

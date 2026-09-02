@@ -305,6 +305,8 @@ Checks that passed:
 | Published XLM-R | 0.72 | Yes |
 | Published XLM-R + TSD transfer | 0.73 | Yes |
 
+**Our final Phase 1 baseline: 0.5965 +/- 0.0103.** See Step 5b below.
+
 A list of 1,506 words with no neural network, no embeddings and no training
 beats the published non-transformer baseline by 0.05 and beats SinBERT, a
 transformer pretrained on Sinhala.
@@ -537,19 +539,25 @@ would silently delete the labels of about 1% of tweets.
 
 ### Result
 
-| | Mean | Std |
-|---|---|---|
-| Test offensive precision | 0.7558 | 0.0130 |
-| Test offensive recall | 0.4581 | 0.0241 |
-| **Test offensive F1** | **0.5701** | **0.0178** |
-| Validation offensive F1 | 0.5708 | 0.0145 |
+Two runs. The first used `--epochs 30 --patience 5`. Inspecting it showed the
+models were being stopped while still improving, so the second run used
+`--epochs 60 --patience 12`. That is a validation-based decision, not a
+test-based one.
 
-Per-seed test F1: 0.5904, 0.5490, 0.5545, 0.5740, 0.5823.
+| Run | Precision | Recall | **F1** | Std |
+|---|---|---|---|---|
+| Run 1: epochs 30, patience 5 | 0.7558 | 0.4581 | 0.5701 | 0.0178 |
+| **Run 2: epochs 60, patience 12** | **0.7299** | **0.4899** | **0.5847** | **0.0195** |
+
+Run 2 per-seed test F1: 0.6023, 0.5828, 0.5545, 0.6019, 0.5823.
 Five seeds, F1 computed per seed then averaged.
-Training time 873s per seed on Apple MPS.
 
-Published BiLSTM + fastText is 0.60. **We are at 0.5701, within the acceptable
-reproduction range.** Phase 1 exit criterion met.
+Longer training gained **+0.0146 F1**. It came exactly where predicted: recall
+rose from 0.458 to 0.490 while precision fell slightly from 0.756 to 0.730. The
+model was still learning to fire more often when the first run cut it off.
+
+Published BiLSTM + fastText is 0.60. **We are at 0.5847**, within the acceptable
+reproduction range and within 0.015 of the published number.
 
 ## KEY FINDING: our precision and recall confirm the swapped-argument bug
 
@@ -560,11 +568,14 @@ published precision and recall were reversed.
 
 | | Precision | Recall | F1 |
 |---|---|---|---|
-| **Our BiLSTM** | **0.7558** | **0.4581** | 0.5701 |
+| Our BiLSTM, run 1 | 0.7558 | 0.4581 | 0.5701 |
+| **Our BiLSTM, run 2** | **0.7299** | **0.4899** | 0.5847 |
 | Published, as printed | 0.48 | 0.74 | 0.60 |
 | Published, **un-swapped** | **0.74** | **0.48** | 0.60 |
 
-Our independent reproduction lands almost exactly on their un-swapped values.
+Our independent reproduction lands almost exactly on their un-swapped values,
+and the match got **closer** after longer training: 0.730 against 0.74, and
+0.490 against 0.48. Both within 0.01.
 
 **We now have two independent lines of evidence for the same claim**: one from
 reading their code, one from reproducing their model and landing in the
@@ -583,16 +594,16 @@ data. Fix: choose hyperparameters on validation, then rebuild on the full 7,500
 with those settings and score test once - the same protocol we used for the word
 list.
 
-**2. The models are stopping too early.** Seed 4 ran to the 30-epoch limit and
-its best score was at epoch 30, still improving when we cut it off. Validation
-F1 is noisy on this task, swinging eight points between adjacent epochs
-(seed 3: 0.5544, 0.4633, 0.4936, 0.4808, 0.5497). With `patience=5` a run can be
-killed by noise while still trending up. The epoch counts confirm it: 25, 13,
-18, 30, 21 for identical configurations. **Fix: `--epochs 60 --patience 12`.**
+**2. FIXED. The models were stopping too early.** In run 1, seed 4 hit the
+30-epoch limit with its best score at epoch 30, still improving. Validation F1
+is noisy here, swinging eight points between adjacent epochs, so `patience=5`
+killed runs that were still trending up. Run 2 with `--epochs 60 --patience 12`
+recovered +0.0146 F1. Best epochs in run 2 were 30, 30, 13, 42, 16 - so the
+longer budget was genuinely used.
 
-**3. Recall was still climbing.** Across every seed, precision stays flat around
-0.75-0.84 while recall grinds upward. The model was learning to fire more often
-and had not finished.
+**3. FIXED. Recall was still climbing.** Confirmed: recall rose 0.458 -> 0.490
+between runs while precision fell only 0.756 -> 0.730. Recall remains the weak
+side and is the main target for Phase 2.
 
 ### Parameter count - the efficiency claim
 
@@ -622,20 +633,377 @@ To try, in order: `--batch-size 64`, then forcing CPU to compare, then Colab's
 free T4 GPU. Owner: Person 5. A 3x speedup pays for itself many times over in
 Phase 2.
 
-## What we are building (Phase 2)
+## Step 5: seeds, stability, and freezing the configuration
 
-Four parts, added one at a time on top of the baseline.
+### Seed variance is real and must be reported
 
-1. **Subword input.** Split words into small pieces so the model can handle word endings
-   and unseen words. Justified by the 13.2% unknown word rate above.
-2. **Joint multi-task head.** Learn the sentence label and the word labels at the same
-   time, sharing one encoder, so each task helps the other.
-3. **Balanced loss.** Stop the model ignoring the rare offensive words. Justified by the
-   4.14% imbalance above.
-4. **Offline distillation.** Learn from SemiSOLD, which has 145,000 extra tweets with
-   saved scores from 11 earlier models. Those scores are sentence-level only, so they
-   train our sentence head, which then helps the token head through the shared encoder.
-   No pretrained model is ever inside our network.
+| Seed | Best epoch | Test F1 |
+|---|---|---|
+| 1 | 30 | 0.6023 |
+| 2 | 30 | 0.5828 |
+| 3 | 13 | **0.5545** |
+| 4 | 42 | 0.6019 |
+| 5 | 16 | 0.5823 |
+
+Mean 0.5847, standard deviation 0.0195. The spread from best to worst is
+**0.048 F1**, which is larger than most of the improvements we hope to measure
+in Phase 2.
+
+**This is why five seeds are mandatory.** A single run of this model could
+report anything from 0.55 to 0.60. If we ran one seed of a Phase 2 component and
+got 0.60, we would have no idea whether the component helped or whether we got a
+lucky seed. Every number in the paper is a mean over 5 seeds with its standard
+deviation printed next to it.
+
+Seed 3 is the outlier. It peaked at epoch 13 and never recovered across the next
+12 epochs, so it stopped early. It is a genuine bad initialisation, not a bug.
+**We keep it.** Dropping an inconvenient seed is exactly the kind of quiet
+dishonesty that gets papers rejected on correctness.
+
+### Configuration frozen
+
+Everything below is fixed. Phase 2 changes one thing at a time against it.
+
+| Setting | Value |
+|---|---|
+| Architecture | Embedding -> BiLSTM(64, bidirectional) -> Linear -> CRF |
+| Embeddings | 300d fastText `cc.si.300`, frozen |
+| Vocabulary | 28,456 words, `min_freq=1`, train-part only |
+| Truncation | none; dynamic padding to the batch maximum |
+| Loss | plain CRF negative log likelihood, no class weights |
+| Optimiser | Adam, lr 1e-3, batch 32, dropout 0.5, grad clip 5.0 |
+| Epochs / patience | 60 / 12 |
+| Model selection | best validation offensive-class F1 |
+| Seeds | 1, 2, 3, 4, 5 |
+| **Test offensive F1** | **0.5847 +/- 0.0195** |
+
+Tag this commit. Every Phase 2 result is reported as a difference from this row.
+
+### OUTSTANDING: refit on the full training split
+
+We train on 6,000 tweets. The published baseline almost certainly used all
+7,500. That is 20% less data and is the most likely remaining source of our
+0.015 gap.
+
+The fix is the protocol we already used for the word list. Hyperparameters are
+now chosen, so rebuild on the full 7,500 and score test once.
+
+The one complication: with no validation split left, there is nothing to early
+stop on. Use a **fixed epoch budget** taken from the validation runs instead.
+Best epochs were 30, 30, 13, 42, 16, giving a mean of 26 and a median of 30.
+**Train for 30 epochs, no early stopping, 5 seeds.**
+
+This is legitimate because the budget comes from validation, not from test. Run
+it, report whatever it gives, and do not tune further.
+
+## BLOCKING PROBLEM FOR PHASE 2: training is too slow
+
+| Run | Time per seed | Time for 5 seeds |
+|---|---|---|
+| Run 1 (30 epochs max) | 873s | 73 minutes |
+| Run 2 (60 epochs max) | 2,128s | **3 hours** |
+
+Phase 2 has four components, each needing an ablation, plus hyperparameter
+sweeps. That is dozens of configurations. At 3 hours each, a single ablation
+table costs a week.
+
+**This must be fixed before Phase 2 starts.** Things to try, in order:
+
+1. `--batch-size 64` or 128. Cheapest possible win.
+2. Force CPU and compare against MPS. Apple MPS is often *slower* than CPU for
+   small LSTMs because of kernel-launch overhead, and CRF decoding is sequential
+   and does not parallelise well.
+3. Google Colab free T4 GPU.
+4. Profile whether CRF decoding dominates. If it does, use `--no-crf` for the
+   ablation sweeps and only add the CRF back for final reported runs.
+
+Owner: Person 5. Target: under 10 minutes for 5 seeds. Report the measured
+numbers - they also feed the computational analysis section of the paper.
+
+## Step 5b: full-train refit — PHASE 1 CLOSED
+
+Steps 4 and 5 trained on 6,000 tweets because 1,500 were held out for choosing
+hyperparameters. Once those choices were frozen, validation had no job left, so
+we folded it back in and retrained on all 7,500 - the same protocol that
+produced our word-list result.
+
+With no validation split there is nothing to early stop on, so we used a fixed
+budget of **30 epochs**, the median best-epoch from the Step 5 validation runs
+(30, 30, 13, 42, 16). The budget came from validation, never from test.
+
+### Final result
+
+| | Mean | Std |
+|---|---|---|
+| Test offensive precision | 0.7452 | 0.0161 |
+| Test offensive recall | 0.4979 | 0.0211 |
+| **Test offensive F1** | **0.5965** | **0.0103** |
+
+Per-seed: 0.5884, 0.6116, 0.5999, 0.5966, 0.5858. Five seeds, 30 fixed epochs,
+1,468s per seed on Apple MPS.
+
+### The reproduction is essentially exact
+
+| | Precision | Recall | F1 |
+|---|---|---|---|
+| **Our full-train refit** | **0.7452** | **0.4979** | **0.5965** |
+| Published, as printed | 0.48 | 0.74 | 0.60 |
+| Published, **un-swapped** | **0.74** | **0.48** | **0.60** |
+
+All three numbers match. F1 differs by 0.0035, precision by 0.005, recall by
+0.018. This is the strongest form of the swapped-argument evidence: we did not
+merely land in the same *regime* as their model, we landed on their exact
+numbers once un-swapped.
+
+### Two secondary findings
+
+**More data helped: +0.0118 F1** (0.5847 with 6,000 tweets, 0.5965 with 7,500).
+The gain came almost entirely from recall, 0.490 -> 0.498, while precision held
+at roughly 0.73-0.75.
+
+**More data also made training more stable.** Standard deviation dropped from
+0.0195 to 0.0103, close to half. With 6,000 tweets the seed spread was 0.048;
+with 7,500 it is 0.026. Worth one sentence in the paper: on a small
+low-resource dataset, the last 25% of training data buys stability as much as
+accuracy.
+
+### The vocabulary grew
+
+Rebuilding from the full split gave 33,006 words instead of 28,456. Vector
+coverage fell slightly, 81.9% -> 80.8%, because the extra words are rare ones
+fastText is less likely to have. Total parameters rose to 10,089,458 purely
+from the larger frozen embedding table. **Trainable parameters are unchanged at
+187,658.**
+
+### FINAL PHASE 1 BASELINE — frozen, do not change
+
+| Setting | Value |
+|---|---|
+| Architecture | Embedding -> BiLSTM(64, bidirectional) -> Linear -> CRF |
+| Trained on | 7,500 tweets, full official train split |
+| Epochs | 30 fixed, budget from validation |
+| Batch size | 32 |
+| Vocabulary | 33,006 words, `min_freq=1`, from full train |
+| Embeddings | 300d fastText, frozen, 80.8% real vectors |
+| Loss | plain CRF negative log likelihood |
+| Optimiser | Adam, lr 1e-3, dropout 0.5, grad clip 5.0 |
+| Seeds | 1, 2, 3, 4, 5 |
+| **Test offensive F1** | **0.5965 +/- 0.0103** |
+| Parameters | 10,089,458 total / 187,658 trainable |
+| Time | 1,468s per seed |
+
+Tag this commit. Every Phase 2 result is reported as a change from this row.
+
+### Where Phase 1 leaves us
+
+| Model | F1 | Precision | Recall |
+|---|---|---|---|
+| Our BiLSTM baseline | 0.5965 | 0.745 | 0.498 |
+| **Our word list** | **0.6521** | 0.636 | 0.669 |
+| Published XLM-R | 0.72 | 0.68 | 0.76 |
+
+Read the precision and recall columns. Our model is **accurate but timid** - when
+it flags a word it is usually right, but it stays silent far too often. The word
+list fires more freely and wins on F1 despite being less accurate. XLM-R has
+both.
+
+**Recall is the gap.** Phase 2 must raise recall without giving away the
+precision we already have.
+
+# PHASE 2 PLAN
+
+## We keep the same model. We do not start again.
+
+The BiLSTM from Step 4 stays. It is the skeleton. Phase 2 adds four pieces to
+it, one at a time.
+
+```
+   Phase 1 (done)                  Phase 2 (next)
+   ------------------              ------------------------------------
+   words                           words
+     |                               |
+     |                             [1] split into subword pieces
+     v                               v
+   fastText vectors                fastText vectors
+     |                               |
+     v                               v
+   BiLSTM (64)                     BiLSTM (64)              <- unchanged
+     |                               |
+     v                               |-----------------+
+   CRF                               v                 v
+     |                             CRF               [2] sentence head
+     v                               |                 |
+   word labels                       v                 v
+                                   word labels      offensive yes/no
+                                     |                 |
+                                   [3] balanced loss   |
+                                                    [4] learn from SemiSOLD
+```
+
+Everything in the middle column stays. We are bolting parts on, not rebuilding.
+
+**Why one at a time.** If we add all four together and the score goes up, we
+learn nothing about which piece helped. Reviewers will ask, and "we do not know"
+is not an answer. Adding them one at a time gives us a table showing what each
+piece is worth. That table is called an **ablation study** and it is what makes
+the paper credible.
+
+It also protects us. If we run out of time after two pieces, we still have a
+complete, honest paper about those two pieces.
+
+## The number to beat
+
+| | F1 |
+|---|---|
+| Our BiLSTM baseline (Phase 1, frozen) | **0.5965 +/- 0.0103** |
+| Our word list | **0.6521**  <- the real floor |
+| Published SinBERT | 0.62 |
+| Published XLM-R | 0.72 |
+
+A word list with no learning beats our neural model. Phase 2 has to fix that.
+Beating 0.60 is not enough. **We must beat 0.6521.**
+
+## Step 0 of Phase 2: fix the speed. Nothing else starts first.
+
+Right now 5 seeds take 3 hours. Phase 2 needs dozens of setups, each run 5
+times. At this speed one comparison table takes a week.
+
+Try in order: `--batch-size 64`, then CPU versus MPS, then Google Colab's free
+T4 GPU, then check whether CRF decoding is the bottleneck.
+**Target: 5 seeds in under 10 minutes.** Owner: Person 5.
+
+These measurements also go straight into the paper's efficiency section, so the
+work is not a detour.
+
+## Piece 1: subword input
+
+**The problem.** Our model sees `සක්කිලි` and `සක්කිලියා` as two completely
+unrelated ID numbers, even though they are the same insult with different
+endings. Sinhala packs grammar into word endings, so one root appears in many
+forms. **48.7% of the distinct words in our test set never appeared in
+training.** The model has nothing at all for those.
+
+**The fix.** Break each word into smaller pieces before the model sees it, using
+a tool called SentencePiece. Then a word the model has never met can still be
+understood, because it shares pieces with words it knows.
+
+**Why we believe it will work.** Three pieces of evidence, all measured by us in
+Step 3: the 48.7% unseen rate; fastText's nearest neighbours in Sinhala are
+almost all morphological variants rather than synonyms; and fastText already
+beats word2vec on Sinhala precisely because it uses subword information.
+
+**Watch out for.** Our labels are one per *word*, but subwords are smaller than
+words. We must recombine the pieces back into one vector per word before the
+label layer. Decide the rule once, write it down, never change it.
+
+**Tune on validation:** subword vocabulary size (try 2k, 4k, 8k, 16k).
+
+## Piece 2: joint sentence + token head
+
+**The idea.** Right now the model has one job: label each word. We add a second
+job: say whether the whole tweet is offensive. Both jobs share the same BiLSTM
+underneath.
+
+**Why it helps.** The two jobs are two views of the same thing. Forcing one
+BiLSTM to be good at both makes its internal representation better. This is
+especially useful for us because offensive word labels are rare (4%) and we only
+have 6,000 training tweets.
+
+**The real reason it matters.** This head is the docking port for Piece 4. Our
+extra 145,000 tweets only have *sentence-level* scores. Without a sentence head
+we cannot use them at all. So Pieces 2 and 4 are one idea, not two.
+
+**Tune on validation:** lambda, the balance between the two jobs.
+
+## Piece 3: balanced loss
+
+**The problem.** Only 4 in every 100 tokens are offensive. A model can say "not
+offensive" to everything, be 96% correct, and be useless. We already saw a
+version of this collapse during testing.
+
+**The fix.** Change the loss function so rare offensive tokens count for more.
+Four options to compare:
+
+| Option | What it does |
+|---|---|
+| Plain cross-entropy | The control. What the baseline uses now. |
+| Weighted cross-entropy | Multiply the offensive class's loss by a constant. Simple, often competitive. |
+| Focal loss | Ignore examples it already gets right, focus on hard ones. |
+| Dice loss | Optimise something F1-like directly. Built for imbalanced NLP. Public code exists. |
+
+**Watch out for.** Our model is precision 0.73, recall 0.49 — it is accurate but
+timid. These losses push recall up. If we push too hard we could end up at
+recall 0.90 and precision 0.35, which has a **worse** F1 than we started with.
+Always report both columns.
+
+## Piece 4: offline distillation from SemiSOLD
+
+**What we have.** 145,000 extra Sinhala tweets with no human labels, but with
+scores already saved from 11 earlier models.
+
+**What we do.** Our small model learns to copy those saved scores. Like a
+student studying an answer key without ever meeting the teacher.
+
+**Why this does not break the no-PLM rule.** The teacher models were run by the
+dataset authors in 2022. Their answers are static numbers in a public file. No
+pretrained language model is ever loaded, run, or trained inside our network. We
+are consuming a published file, exactly as we consume the gold labels.
+
+**The catch, and the design consequence.** Those 145,000 scores are
+**sentence-level only**. There are no token labels. So distillation cannot teach
+our word-labelling head directly. It teaches the *sentence* head from Piece 2,
+and because both heads sit on one shared BiLSTM, a better sentence head pulls
+the shared part in a better direction, which helps the word labels.
+
+**Write that sentence in the paper.** It is the spine of our contribution:
+multi-task learning is what makes distillation reachable at token level.
+
+**Use the authors' own findings.** They filtered these extra tweets by model
+uncertainty and found a threshold of 0.1 best (about 8,474 tweets). A looser
+0.15 added 47,746 tweets but made results *worse* from the noise. They also
+found lightweight models gain most: BiLSTM+CBOW gained +2.78% while XLM-R gained
+only +0.63%. Our model is the lightweight kind. That is where the headroom is.
+
+**Do this last.** It is the fiddliest piece. If it stalls, report it as a
+negative result and move on. A careful negative result is a legitimate finding.
+
+## Order of work
+
+| Order | Piece | Why this position |
+|---|---|---|
+| 0 | Fix speed | Everything else depends on it |
+| 1 | Subword | Cheapest, best evidence, most likely to work |
+| 2 | Multi-task | Needed before distillation is possible |
+| 3 | Balanced loss | Independent, can be done in parallel |
+| 4 | Distillation | Hardest, most likely to fail, do last |
+
+After each piece: run 5 seeds, record mean and standard deviation, append to
+`results/results.csv`, compare against 0.5965.
+
+## What success looks like
+
+| Outcome | Result | Verdict |
+|---|---|---|
+| Floor | Beat 0.6521 clearly | Solid paper |
+| Target | 0.65 - 0.70 | Strong paper |
+| Stretch | Match or beat 0.72 | Very strong |
+| Negative | A piece does not help | **Still report it** |
+
+For context, 36 teams did this same task in **English** at SemEval-2021 with far
+more data, and the winner got about 0.68. This task is hard everywhere. Modest,
+well-evidenced gains are normal, not a disappointment.
+
+## The rule that decides whether this gets published
+
+Every number is a mean over 5 seeds with its standard deviation next to it.
+Our seed spread in Phase 1 was **0.026** even with the full training split -
+wider than most improvements we are chasing. One run proves nothing.
+
+Every hyperparameter is chosen on validation. Test is opened once per
+configuration we intend to publish.
+
+Every claim in the paper points to a number in a table. If it does not, we
+soften it or delete it.
 
 ## How we measure success
 
@@ -667,7 +1035,8 @@ Four parts, added one at a time on top of the baseline.
 │   ├── 01_data_exploration.py  Step 1 checks
 │   ├── 02_metric_check.py      Step 2 baselines
 │   ├── 03_embeddings.py        Step 3 vocabulary and vectors
-│   └── 04_baseline.py          Step 4 BiLSTM baseline
+│   ├── 04_baseline.py          Step 4 BiLSTM baseline
+│   └── 05_full_train_refit.py  Step 5b full-train refit
 ├── tests/
 │   └── test_metrics.py         9 unit tests, must always pass
 └── results/
@@ -727,10 +1096,20 @@ Do not unzip the vector file. The loader reads `.gz` directly.
       **Word list = 0.6521. This is the floor our model must beat.**
 - [x] **Step 3** fastText loaded. 28,456-word vocabulary, 81.9% real vectors.
       Morphological evidence for the subword component found.
-- [x] **Step 4** BiLSTM + CRF baseline reproduced. **0.5701 +/- 0.0178** over
-      5 seeds. Precision/recall confirm the swapped-argument bug.
-- [ ] **Step 5** Re-run with `--epochs 60 --patience 12`, refit on full train,
-      freeze the config, tag the commit.
+- [x] **Step 4** BiLSTM + CRF baseline reproduced.
+- [x] **Step 5** Re-run with `--epochs 60 --patience 12`.
+      **0.5847 +/- 0.0195** over 5 seeds. Config frozen.
+- [x] **Step 5b** Full-train refit. **0.5965 +/- 0.0103.** Reproduction is
+      essentially exact against the published 0.60.
+
+**PHASE 1 COMPLETE.**
+
+Phase 2:
+- [ ] **Step 0** Move to Colab GPU, fix training speed
+- [ ] **Piece 1** Subword input
+- [ ] **Piece 2** Joint sentence + token head
+- [ ] **Piece 3** Balanced loss
+- [ ] **Piece 4** Offline distillation from SemiSOLD
 
 ## Data source
 
