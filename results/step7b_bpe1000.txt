@@ -1,0 +1,51 @@
+
+========================================================================
+0. SETUP
+========================================================================
+device mps   mode FINAL (scores test)
+seeds [1, 2, 3, 4, 5]   batch 32   crf True   epochs<=60 patience 12
+
+row-level results append to: results/results_phase2.csv
+this readable report goes to stdout - redirect it to results/
+
+train-part 6,000  val 1,500  test 2,500
+vocab 28,456   embedding matrix (28456, 300)
+
+========================================================================
+1. FINAL RUN - bpe_1000
+========================================================================
+Frozen Phase 1 settings (batch 32, CRF on) so the number is directly
+comparable to the baseline 0.5965.
+
+--- bpe_1000  (1,000 pieces)  
+    tag: final_bpe_1000_bilstm
+    trainable 329,658  (subword channel 90,800, lstm input 400)
+    seed 1  val F1 0.7034   TEST F1 0.7161   (2266s, 30 epochs)
+    seed 2  val F1 0.7086   TEST F1 0.7017   (2132s, 30 epochs)
+    seed 3  val F1 0.7006   TEST F1 0.7161   (2934s, 41 epochs)
+    seed 4  val F1 0.7144   TEST F1 0.7043   (2494s, 35 epochs)
+    seed 5  val F1 0.7145   TEST F1 0.7138   (2624s, 37 epochs)
+    VAL  F1 0.7083 +/- 0.0063   (2490s/seed)
+    TEST F1 0.7104 +/- 0.0069   P 0.7407  R 0.6827
+
+========================================================================
+2. RESULT
+========================================================================
+
+  Phase 1 baseline (word only)  0.5965 +/- 0.0103
+  + subword channel             0.7104 +/- 0.0069
+  change                        +0.1139
+
+  our word list                 0.6521   <- still the floor to beat
+  published XLM-R               0.7200
+
+  precision 0.7407   recall 0.6827
+  Phase 1 was precision 0.7452, recall 0.4979.
+
+  CLEAR GAIN. +0.1139 is more than twice the noise (0.0103).
+
+  ABLATION ROWS STILL OWED
+    --pooling mean            does piece ORDER matter?
+    --no-word-channel         is fastText still needed?
+  Both at 5 seeds, same settings.
+

@@ -52,7 +52,7 @@ from train import train_one_seed, evaluate, get_device
 from metrics import aggregate_seeds
 
 MATRIX = "artifacts/embedding_matrix.npy"
-RESULTS_CSV = "results/results.csv"
+RESULTS_CSV = "results/results_phase2.csv"   # own schema; Phase 1 file untouched
 BASELINE_F1 = 0.5965       # Phase 1, full-train refit
 BASELINE_STD = 0.0103
 WORDLIST_F1 = 0.6521
@@ -85,6 +85,8 @@ p.add_argument("--epochs", type=int, default=None)
 p.add_argument("--patience", type=int, default=None)
 p.add_argument("--batch-size", type=int, default=None)
 p.add_argument("--no-crf", action="store_true")
+p.add_argument("--tag", type=str, default=None,
+               help="override the auto-generated run tag")
 args = p.parse_args()
 
 if not (args.sweep or args.final):
@@ -121,6 +123,8 @@ test = load_sold("test")
 train_part, val = train_val_split(train_full)
 vocab, _ = build_vocab(train_part["token_list"], min_freq=1)
 matrix = np.load(MATRIX)
+print(f"\nrow-level results append to: {RESULTS_CSV}")
+print("this readable report goes to stdout - redirect it to results/")
 print(f"\ntrain-part {len(train_part):,}  val {len(val):,}  test {len(test):,}")
 print(f"vocab {len(vocab):,}   embedding matrix {matrix.shape}")
 if matrix.shape[0] != len(vocab):
@@ -137,20 +141,64 @@ def build(sp, n_pieces):
     )
 
 
-def log_row(tag, seed, val_f1, s, secs, epochs):
+CSV_FIELDS = [
+    "tag", "mode", "sp", "n_pieces", "pooling", "piece_dim", "subword_dim",
+    "word_channel", "crf", "batch", "hidden", "lr", "dropout",
+    "seed", "epochs_run", "seconds", "val_f1", "test_p", "test_r", "test_f1",
+]
+
+
+def make_tag(sp_name):
+    """Auto-generate a tag that captures EVERY setting this run varies.
+
+    Without this, --no-crf and --no-word-channel runs would land on the same
+    tag as the plain run and the results file becomes unreadable.
+    """
+    if args.tag:
+        return args.tag
+    parts = ["sweep" if args.sweep else "final", sp_name, args.pooling]
+    if args.subword_dim != 100:
+        parts.append(f"sd{args.subword_dim}")
+    if args.piece_dim != 50:
+        parts.append(f"pd{args.piece_dim}")
+    if args.no_word_channel:
+        parts.append("nowordch")
+    if not USE_CRF:
+        parts.append("nocrf")
+    if BATCH != (128 if args.sweep else 32):
+        parts.append(f"b{BATCH}")
+    return "_".join(parts)
+
+
+def log_row(tag, sp_name, n_pieces, seed, val_f1, s, secs, epochs):
     os.makedirs("results", exist_ok=True)
     new = not os.path.exists(RESULTS_CSV)
     with open(RESULTS_CSV, "a", newline="") as fh:
-        wtr = csv.writer(fh)
+        wtr = csv.DictWriter(fh, fieldnames=CSV_FIELDS)
         if new:
-            wtr.writerow(["tag", "seed", "crf", "weighted", "frozen_emb", "hidden",
-                          "lr", "dropout", "epochs_run", "seconds",
-                          "val_f1", "test_p", "test_r", "test_f1"])
-        wtr.writerow([tag, seed, USE_CRF, False, True, 64, 1e-3, 0.5, epochs,
-                      round(secs, 1), round(val_f1, 4),
-                      round(s["offensive_precision"], 4) if s else "",
-                      round(s["offensive_recall"], 4) if s else "",
-                      round(s["offensive_f1"], 4) if s else ""])
+            wtr.writeheader()
+        wtr.writerow({
+            "tag": tag,
+            "mode": "sweep" if args.sweep else "final",
+            "sp": sp_name,
+            "n_pieces": n_pieces,
+            "pooling": args.pooling,
+            "piece_dim": args.piece_dim,
+            "subword_dim": args.subword_dim,
+            "word_channel": not args.no_word_channel,
+            "crf": USE_CRF,
+            "batch": BATCH,
+            "hidden": 64,
+            "lr": 1e-3,
+            "dropout": 0.5,
+            "seed": seed,
+            "epochs_run": epochs,
+            "seconds": round(secs, 1),
+            "val_f1": round(val_f1, 4),
+            "test_p": round(s["offensive_precision"], 4) if s else "",
+            "test_r": round(s["offensive_recall"], 4) if s else "",
+            "test_f1": round(s["offensive_f1"], 4) if s else "",
+        })
 
 
 def run(sp_name, note=""):
@@ -164,7 +212,9 @@ def run(sp_name, note=""):
 
     model_fn = build(sp, n_pieces)
     params = model_fn().count_parameters()
+    tag = make_tag(sp_name)
     print(f"\n--- {sp_name}  ({n_pieces:,} pieces)  {note}")
+    print(f"    tag: {tag}")
     print(f"    trainable {params['trainable']:,}  "
           f"(subword channel {params['subword_channel']:,}, "
           f"lstm input {params['lstm_input_dim']})")
@@ -187,7 +237,7 @@ def run(sp_name, note=""):
             test_runs.append(test_s)
             line += f"   TEST F1 {test_s['offensive_f1']:.4f}"
         print(line + f"   ({secs:.0f}s, {len(hist)} epochs)")
-        log_row(f"subword_{sp_name}_{args.pooling}", seed,
+        log_row(tag, sp_name, n_pieces, seed,
                 best_val["offensive_f1"], test_s, secs, len(hist))
 
     va = aggregate_seeds(val_runs)

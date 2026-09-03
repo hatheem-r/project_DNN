@@ -1,0 +1,12 @@
+tag,mode,sp,n_pieces,pooling,piece_dim,subword_dim,word_channel,crf,batch,hidden,lr,dropout,seed,epochs_run,seconds,val_f1,test_p,test_r,test_f1
+final_bpe_2000_bilstm_nocrf,final,bpe_2000,2000,bilstm,50,100,True,False,32,64,0.001,0.5,1,34,1973.9,0.708,0.7717,0.6455,0.703
+final_bpe_2000_bilstm_nocrf,final,bpe_2000,2000,bilstm,50,100,True,False,32,64,0.001,0.5,2,36,2102.3,0.7053,0.7145,0.7006,0.7075
+final_bpe_2000_bilstm_nocrf,final,bpe_2000,2000,bilstm,50,100,True,False,32,64,0.001,0.5,3,43,2426.0,0.7068,0.7212,0.6843,0.7023
+final_bpe_2000_bilstm_nocrf,final,bpe_2000,2000,bilstm,50,100,True,False,32,64,0.001,0.5,4,29,1635.2,0.7021,0.7473,0.6742,0.7089
+final_bpe_2000_bilstm_nocrf,final,bpe_2000,2000,bilstm,50,100,True,False,32,64,0.001,0.5,5,27,1530.6,0.7078,0.7168,0.7041,0.7104
+final_bpe_1000_bilstm,final,bpe_1000,1000,bilstm,50,100,True,True,32,64,0.001,0.5,1,30,2266.0,0.7034,0.7353,0.698,0.7161
+final_bpe_1000_bilstm,final,bpe_1000,1000,bilstm,50,100,True,True,32,64,0.001,0.5,2,30,2131.9,0.7086,0.7353,0.6711,0.7017
+final_bpe_1000_bilstm,final,bpe_1000,1000,bilstm,50,100,True,True,32,64,0.001,0.5,3,41,2933.8,0.7006,0.7377,0.6958,0.7161
+final_bpe_1000_bilstm,final,bpe_1000,1000,bilstm,50,100,True,True,32,64,0.001,0.5,4,35,2493.8,0.7144,0.7448,0.668,0.7043
+final_bpe_1000_bilstm,final,bpe_1000,1000,bilstm,50,100,True,True,32,64,0.001,0.5,5,37,2624.1,0.7145,0.7502,0.6808,0.7138
+final_bpe_1000_mean,final,bpe_1000,1000,mean,50,100,True,True,32,64,0.001,0.5,1,42,2560.0,0.6799,0.7486,0.6261,0.6819

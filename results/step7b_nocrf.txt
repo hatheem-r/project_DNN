@@ -1,0 +1,51 @@
+
+========================================================================
+0. SETUP
+========================================================================
+device mps   mode FINAL (scores test)
+seeds [1, 2, 3, 4, 5]   batch 32   crf False   epochs<=60 patience 12
+
+row-level results append to: results/results_phase2.csv
+this readable report goes to stdout - redirect it to results/
+
+train-part 6,000  val 1,500  test 2,500
+vocab 28,456   embedding matrix (28456, 300)
+
+========================================================================
+1. FINAL RUN - bpe_2000
+========================================================================
+Frozen Phase 1 settings (batch 32, CRF on) so the number is directly
+comparable to the baseline 0.5965.
+
+--- bpe_2000  (2,000 pieces)  
+    tag: final_bpe_2000_bilstm_nocrf
+    trainable 379,650  (subword channel 140,800, lstm input 400)
+    seed 1  val F1 0.7080   TEST F1 0.7030   (1974s, 34 epochs)
+    seed 2  val F1 0.7053   TEST F1 0.7075   (2102s, 36 epochs)
+    seed 3  val F1 0.7068   TEST F1 0.7023   (2426s, 43 epochs)
+    seed 4  val F1 0.7021   TEST F1 0.7089   (1635s, 29 epochs)
+    seed 5  val F1 0.7078   TEST F1 0.7104   (1531s, 27 epochs)
+    VAL  F1 0.7060 +/- 0.0024   (1934s/seed)
+    TEST F1 0.7064 +/- 0.0036   P 0.7343  R 0.6817
+
+========================================================================
+2. RESULT
+========================================================================
+
+  Phase 1 baseline (word only)  0.5965 +/- 0.0103
+  + subword channel             0.7064 +/- 0.0036
+  change                        +0.1099
+
+  our word list                 0.6521   <- still the floor to beat
+  published XLM-R               0.7200
+
+  precision 0.7343   recall 0.6817
+  Phase 1 was precision 0.7452, recall 0.4979.
+
+  CLEAR GAIN. +0.1099 is more than twice the noise (0.0103).
+
+  ABLATION ROWS STILL OWED
+    --pooling mean            does piece ORDER matter?
+    --no-word-channel         is fastText still needed?
+  Both at 5 seeds, same settings.
+
