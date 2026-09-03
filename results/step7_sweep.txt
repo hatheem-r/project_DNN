@@ -1,0 +1,68 @@
+
+========================================================================
+0. SETUP
+========================================================================
+device mps   mode SWEEP (validation only)
+seeds [1, 2, 3]   batch 128   crf False   epochs<=60 patience 12
+
+Sweep uses batch 128 and no CRF for speed (Step 0: CRF costs 6-8x).
+Rankings only. Every reported number comes from a --final run.
+
+train-part 6,000  val 1,500  test 2,500
+vocab 28,456   embedding matrix (28456, 300)
+
+========================================================================
+1. SWEEP - four tokenizer settings on VALIDATION
+========================================================================
+Test is NOT touched. These numbers choose a setting, nothing more.
+
+--- bpe_24000  (24,000 pieces)  84.7% words whole - near word level
+    trainable 1,479,650  (subword channel 1,240,800, lstm input 400)
+    seed 1  val F1 0.6788   (1132s, 33 epochs)
+    seed 2  val F1 0.6784   (1151s, 44 epochs)
+    seed 3  val F1 0.6779   (1297s, 53 epochs)
+    VAL  F1 0.6783 +/- 0.0005   (1194s/seed)
+
+--- bpe_8000  (8,000 pieces)  73.5% words whole - middle
+    trainable 679,650  (subword channel 440,800, lstm input 400)
+    seed 1  val F1 0.7068   (1037s, 49 epochs)
+    seed 2  val F1 0.7032   (1075s, 48 epochs)
+    seed 3  val F1 0.6980   (1065s, 48 epochs)
+    VAL  F1 0.7027 +/- 0.0044   (1059s/seed)
+
+--- bpe_2000  (2,000 pieces)  55.3% words whole - real decomposition
+    trainable 379,650  (subword channel 140,800, lstm input 400)
+    seed 1  val F1 0.7073   (1407s, 56 epochs)
+    seed 2  val F1 0.7066   (1170s, 46 epochs)
+    seed 3  val F1 0.7041   (1096s, 45 epochs)
+    VAL  F1 0.7060 +/- 0.0017   (1224s/seed)
+
+--- unigram_8000  (8,000 pieces)  76.0% words whole - CONTROL vs bpe_8000, grapheme effect
+    trainable 679,650  (subword channel 440,800, lstm input 400)
+    seed 1  val F1 0.7061   (1292s, 55 epochs)
+    seed 2  val F1 0.7008   (1219s, 52 epochs)
+    seed 3  val F1 0.7022   (1337s, 57 epochs)
+    VAL  F1 0.7030 +/- 0.0028   (1283s/seed)
+
+========================================================================
+2. RANKING
+========================================================================
+setting             val F1      std
+-----------------------------------
+bpe_2000            0.7060   0.0017
+unigram_8000        0.7030   0.0028
+bpe_8000            0.7027   0.0044
+bpe_24000           0.6783   0.0005
+
+BEST ON VALIDATION: bpe_2000  (0.7060)
+
+GRAPHEME CONTROL (bpe_8000 vs unigram_8000, same vocabulary size)
+  difference -0.0004, pooled std 0.0036
+  Inside the noise. Step 6's grapheme finding does not translate
+  into an F1 difference here. Report it as a tokenizer-quality
+  observation, NOT as an accuracy claim.
+
+NEXT: run the winner with the frozen Phase 1 settings and score test once.
+
+    python notebooks/07_subword_model.py --final --sp bpe_2000
+

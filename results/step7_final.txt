@@ -1,0 +1,47 @@
+
+========================================================================
+0. SETUP
+========================================================================
+device mps   mode FINAL (scores test)
+seeds [1, 2, 3, 4, 5]   batch 32   crf True   epochs<=60 patience 12
+
+train-part 6,000  val 1,500  test 2,500
+vocab 28,456   embedding matrix (28456, 300)
+
+========================================================================
+1. FINAL RUN - bpe_2000
+========================================================================
+Frozen Phase 1 settings (batch 32, CRF on) so the number is directly
+comparable to the baseline 0.5965.
+
+--- bpe_2000  (2,000 pieces)  
+    trainable 379,658  (subword channel 140,800, lstm input 400)
+    seed 1  val F1 0.7121   TEST F1 0.6992   (1689s, 35 epochs)
+    seed 2  val F1 0.7043   TEST F1 0.7011   (2049s, 42 epochs)
+    seed 3  val F1 0.7002   TEST F1 0.7016   (1218s, 25 epochs)
+    seed 4  val F1 0.7074   TEST F1 0.7088   (1426s, 29 epochs)
+    seed 5  val F1 0.7094   TEST F1 0.7109   (1314s, 27 epochs)
+    VAL  F1 0.7067 +/- 0.0046   (1539s/seed)
+    TEST F1 0.7043 +/- 0.0052   P 0.7463  R 0.6672
+
+========================================================================
+2. RESULT
+========================================================================
+
+  Phase 1 baseline (word only)  0.5965 +/- 0.0103
+  + subword channel             0.7043 +/- 0.0052
+  change                        +0.1078
+
+  our word list                 0.6521   <- still the floor to beat
+  published XLM-R               0.7200
+
+  precision 0.7463   recall 0.6672
+  Phase 1 was precision 0.7452, recall 0.4979.
+
+  CLEAR GAIN. +0.1078 is more than twice the noise (0.0103).
+
+  ABLATION ROWS STILL OWED
+    --pooling mean            does piece ORDER matter?
+    --no-word-channel         is fastText still needed?
+  Both at 5 seeds, same settings.
+

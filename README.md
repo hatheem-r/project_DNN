@@ -810,6 +810,286 @@ both.
 **Recall is the gap.** Phase 2 must raise recall without giving away the
 precision we already have.
 
+## Phase 2, Step 0: moved to Colab GPU — COMPLETE
+
+| batch | CRF | per epoch | 5 seeds x 30 ep | vs laptop |
+|---|---|---|---|---|
+| 32 | on | 19.2s | 48 min | 2.6x |
+| 32 | off | 3.3s | 8 min | 15.0x |
+| 64 | on | 11.0s | 28 min | 4.4x |
+| 64 | off | 2.4s | 6 min | 20.8x |
+| 128 | on | 7.1s | 18 min | 6.9x |
+| 128 | off | 1.8s | 5 min | 26.8x |
+
+**The CRF is the bottleneck, not the batch size.** Turning it off is worth 6-8x
+at every batch size; batch size alone is worth 2-3x.
+
+**Verification passed.** Colab seed 1 gave 0.6052 against the laptop's 0.6023, a
+difference of 0.0029. That is floating-point variation between hardware, not a
+real difference. Phase 2 numbers are comparable to Phase 1.
+
+**Batch 64 slightly hurt.** Colab seeds 1-3 at batch 64 gave 0.5722 against the
+laptop's 0.5799 for the same seeds at batch 32. Inside the noise, but recall
+dropped 0.49 -> 0.46 and there is no upside.
+
+**Decisions.**
+- **Reported results: batch 32, CRF on.** 48 minutes for 5 seeds is workable and
+  keeps us identical to the frozen Phase 1 configuration.
+- **Hyperparameter sweeps: batch 128, CRF off.** 5 minutes for 5 seeds. Validate
+  once that the no-CRF ranking agrees with the with-CRF ranking on the top two
+  or three settings, then trust it.
+
+## Phase 2, Step 6: subword tokenizer — COMPLETE
+
+Swept unigram and BPE at vocab 1k-32k, trained on **train-part text only**.
+
+### Corpus ceiling
+
+Unigram caps at **20,832 pieces**; requests of 24,000 and 32,000 produce the
+identical model. BPE reaches the full 32,000 and peaks at 24,000 (79.8% root
+sharing, falling to 75.0% at 32,000). So both ends of the curve are explored and
+there is no need to sweep higher.
+
+### Root sharing
+
+The metric: an unseen test word contains a piece of >=3 codepoints that also
+occurs inside some training word, so the model can transfer what it learned.
+
+| vocab | unigram | bpe |
+|---|---|---|
+| 1,000 | 44.7% | 45.0% |
+| 4,000 | 62.1% | 66.9% |
+| 8,000 | 69.4% | 74.9% |
+| 16,000 | 78.9% | 78.5% |
+| 24,000 | **82.7%** (at 20,832 cap) | **79.8%** |
+| 32,000 | — | 75.0% |
+
+## KEY FINDING: BPE respects Sinhala grapheme boundaries better than unigram
+
+Sinhala writes a syllable as a base consonant plus **combining marks** - vowel
+signs and the hal kirima. These are separate Unicode codepoints but not separate
+letters. `සෙ` is ONE written letter: `ස` plus the combining sign `ෙ`.
+
+A tokenizer piece that **begins with a combining mark** was cut out of the middle
+of a written letter. It cannot correspond to any morpheme.
+
+| vocab | unigram broken | bpe broken |
+|---|---|---|
+| 1,000 | 13.6% | 13.9% |
+| 2,000 | 12.5% | **12.0%** |
+| 4,000 | 12.0% | **10.2%** |
+| 8,000 | 11.5% | **8.8%** |
+| 16,000 | 11.4% | **8.0%** |
+| 24,000 | 11.0% | **7.9%** |
+| 32,000 | — | **7.7%** |
+
+**BPE wins at every size from 2,000 up, and the gap widens.** Unigram plateaus
+around 11% while BPE keeps falling to 7.7%. Six matched comparisons pointing the
+same way.
+
+Concretely, at vocab 8,000:
+
+```
+ටික්   unigram  ->  ටික | ්      the hal kirima stripped loose - broken
+ටික්   bpe      ->  ටි | ක්      grapheme-correct
+```
+
+**No standard tokenizer metric reveals this.** Pieces-per-word is 1.36 for
+unigram and 1.38 for BPE - effectively identical. Only a script-aware check
+finds it.
+
+This is a small but genuine contribution: for low-resource languages with
+complex scripts, tokenizer evaluation needs a grapheme-integrity measure
+alongside fragmentation counts.
+
+### The head-to-head at the top
+
+| | root shared | broken | pcs/word |
+|---|---|---|---|
+| unigram 20,832 | **82.7%** | 11.0% | 1.18 |
+| bpe 24,000 | 79.8% | **7.9%** | 1.17 |
+
+Unigram wins root-sharing by 2.9 points; BPE wins grapheme integrity by 3.1.
+We weight grapheme integrity more heavily, because the pieces unigram loses on
+are linguistically impossible - a fragment beginning with `්` cannot be a
+morpheme. But this is a judgement, so we test it (see setting 4 below).
+
+### Offensive words are kept whole at every setting
+
+`සක්කිලි`, `පොන්න`, `පුක`, `වේසි` and the rest are single pieces even at vocab
+1,000. So the subword channel adds capacity **without disturbing detection that
+already works**. Every gain must come from unseen morphological variants
+reaching a shared root piece - which also bounds how much this component can buy.
+
+### Two caveats recorded
+
+`MIN_ROOT_LEN` counts **codepoints, not visible letters**. `සක්කිලි` is 7
+codepoints but 4 letters, so the 3-codepoint threshold is really about 2 letters
+and the root-sharing figures are more generous than they look.
+
+The test split contains junk tokens: `┓┓┓┓┓┃` appears 7 times, `62ක්` 4 times.
+Left in, since it is the official split and every published baseline saw it too.
+Worth one line in the limitations section.
+
+### Two measurements we tried and discarded
+
+Recorded so nobody repeats them or cites the meaningless number.
+
+1. **"What fraction of an unseen word's pieces were seen in training?"** Saturated
+   at 99.7-99.9% for all settings. Pieces bottom out at single characters and
+   Sinhala's character inventory is small, so it was measuring "have we seen
+   these characters", which is trivially yes.
+2. **Root-sharing tested on the most COMMON training words.** Those are exactly
+   the words SentencePiece keeps whole, so the check could only ever show what it
+   showed. Both are replaced by measurements on the unseen test words.
+
+### Experiment design for Piece 1
+
+Four settings. Three vary size with the algorithm held constant; the fourth is
+size-matched against the second to isolate the algorithm.
+
+| # | Setting | Words kept whole | Question it answers |
+|---|---|---|---|
+| 1 | bpe 24,000 | 84.7% | does the near-word-level setting win? |
+| 2 | bpe 8,000 | 73.5% | is the middle better? |
+| 3 | bpe 2,000 | 55.3% | does real decomposition help? |
+| 4 | unigram 8,000 | 76.0% | **size-matched control vs #2 - does grapheme breaking actually cost F1?** |
+
+Setting 4 is what turns the grapheme finding from an observation into a result.
+
+Validation F1 decides. Everything in this section is a proxy, not F1.
+
+## Phase 2, Step 7: subword channel — MAJOR RESULT
+
+Added a second input channel to the frozen Phase 1 model. Nothing removed:
+300 fastText numbers (frozen) concatenated with 100 subword numbers (learned),
+so the BiLSTM input grows 300 -> 400. Everything above that is unchanged.
+
+### Result
+
+| | Precision | Recall | **F1** | Std |
+|---|---|---|---|---|
+| Phase 1 baseline (word only) | 0.7452 | 0.4979 | 0.5965 | 0.0103 |
+| **+ subword (bpe_2000)** | **0.7463** | **0.6672** | **0.7043** | **0.0052** |
+| change | **+0.0011** | **+0.1693** | **+0.1078** | |
+
+Five seeds, batch 32, CRF on - the frozen Phase 1 settings, so the number is
+directly comparable. Per-seed test F1: 0.6992, 0.7011, 0.7016, 0.7088, 0.7109.
+
+### Where this puts us
+
+| Model | F1 | Trainable params |
+|---|---|---|
+| Published BiLSTM + CBOW | 0.58 | - |
+| Published BiLSTM + fastText | 0.60 | - |
+| Published SinBERT | 0.62 | ~110M |
+| Our word list | 0.6521 | 0 |
+| Published XLM-T | 0.70 | ~270M |
+| **Ours** | **0.7043** | **379,658** |
+| Published XLM-R | 0.72 | ~560M |
+| Published XLM-R + TSD transfer | 0.73 | ~560M |
+
+Above XLM-T, within 0.016 of XLM-R, with roughly **1,475x fewer trainable
+parameters**.
+
+## KEY FINDING: the gain is precision-neutral and almost entirely recall
+
+Precision moved by 0.0011. Recall gained 0.1693.
+
+This is the predicted mechanism, confirmed. Phase 1 left the model accurate but
+timid - when it fired it was usually right, but it stayed silent far too often.
+We hypothesised that a large share of what it missed was unseen morphological
+forms, invisible to a word-level model, and that subwords would let it fire on
+those forms **without** loosening its decision threshold.
+
+A recall gain of this size at constant precision is what that mechanism looks
+like. It is not what a generic capacity increase or a threshold shift produces.
+
+Supporting evidence that this is real rather than a lucky draw:
+- validation-to-test gap is only **-0.0024**; validation predicted test almost exactly
+- seed variance **halved**, 0.0103 -> 0.0052
+
+## KEY FINDING: our tokenizer-quality proxy anti-correlated with F1
+
+Step 6 ranked the four settings by root sharing. Validation F1 reversed it.
+
+| Setting | root sharing (Step 6) | words kept whole | val F1 | trainable |
+|---|---|---|---|---|
+| bpe_24000 | **79.8%** (ranked 1st) | 84.7% | **0.6783** (last) | 1,479,650 |
+| bpe_8000 | 74.9% | 73.5% | 0.7027 | 679,650 |
+| unigram_8000 | 69.4% | 76.0% | 0.7030 | 679,650 |
+| bpe_2000 | 56.4% (ranked last) | 55.3% | **0.7060** (1st) | 379,650 |
+
+The setting the proxy ranked first came last, by 0.028 - five times the seed
+noise. **Fragmentation predicted F1; root sharing predicted the opposite.**
+
+The degenerate-win warning was the right instinct: at 84.7% words-whole the
+subword channel is nearly a copy of the word channel, adding 1.24M parameters of
+near-redundant capacity on only 6,000 training tweets.
+
+This is a methodological finding worth reporting. Intrinsic tokenizer metrics
+are not a substitute for downstream evaluation.
+
+### CONFOUND, not yet resolved
+
+bpe_2000 has **both** more decomposition **and** far fewer parameters (379k vs
+1.48M). With 6,000 training tweets the smaller model may simply overfit less.
+These cannot be separated from the current data.
+
+**Control still owed:** run bpe_24000 with `--subword-dim` reduced so its
+parameter count matches bpe_2000. If it still loses, decomposition is the cause.
+If it catches up, capacity was. One run, and it turns a plausible story into a
+demonstrated one.
+
+### The grapheme control came back null
+
+bpe_8000 0.7027 vs unigram_8000 0.7030, difference **-0.0004** against a pooled
+std of 0.0036. Same vocabulary size, different algorithm.
+
+Step 6's finding that BPE breaks fewer Sinhala graphemes (7.9% vs 11.0%) does
+**not** translate into an accuracy difference. Report it as a tokenizer-quality
+observation, never as an accuracy claim. Recording the null result rather than
+quietly dropping the experiment.
+
+### The curve has not turned over
+
+bpe_2000 is the **smallest** setting tested and it won. Sweep bpe_1000 and
+bpe_500 before concluding 2,000 is optimal. Step 6 measured bpe_1000 at 2.10
+pieces per word (within range) and bpe_500 at 2.55 (crosses the shredding
+threshold), so 1,000 is the one to try.
+
+### The CRF may now be redundant
+
+Sweep (no CRF, batch 128) gave validation 0.7060. Final (CRF, batch 32) gave
+validation 0.7067. The CRF contributed essentially nothing once subwords were
+present.
+
+If a proper ablation confirms it, we can drop the CRF from every remaining
+experiment for a 6-8x speedup, and we gain a paper row: **the CRF becomes
+redundant once the input representation is good enough.** That is an
+interesting claim about where the sequence structure was coming from.
+
+### Ablations still owed for Piece 1
+
+| Run | Question |
+|---|---|
+| `--pooling mean` | does piece ORDER matter, or is averaging enough? |
+| `--no-word-channel` | is fastText still needed once we have subwords? |
+| `--sp bpe_1000` | has the vocabulary curve turned over? |
+| bpe_24000 at matched params | decomposition or capacity? |
+| `--no-crf` at 5 seeds | is the CRF now redundant? |
+
+All at 5 seeds, frozen settings.
+
+### Alignment safety
+
+`tests/test_subword_alignment.py` - 10 checks that run before any training.
+Labels are one per word; pieces are smaller than words. If the piece tensor ever
+has the wrong number of word-rows, labels shift silently, the loss still falls,
+and the score is quietly terrible with nothing crashing. Test 5 verifies pieces
+do not bleed across word boundaries; test 9 installs a deliberately broken
+encoder and asserts a clear `RuntimeError` fires.
+
 # PHASE 2 PLAN
 
 ## We keep the same model. We do not start again.
@@ -856,7 +1136,8 @@ complete, honest paper about those two pieces.
 | | F1 |
 |---|---|
 | Our BiLSTM baseline (Phase 1, frozen) | **0.5965 +/- 0.0103** |
-| Our word list | **0.6521**  <- the real floor |
+| Our word list | **0.6521** |
+| **+ subword channel (Step 7)** | **0.7043 +/- 0.0052**  <- current best |
 | Published SinBERT | 0.62 |
 | Published XLM-R | 0.72 |
 
@@ -1028,6 +1309,7 @@ soften it or delete it.
 │   ├── data.py                 the ONLY place that loads the dataset
 │   ├── metrics.py              the ONLY place that calculates F1
 │   ├── embeddings.py           vocabulary and fastText loading
+│   ├── subword.py              SentencePiece training and diagnostics
 │   ├── dataset.py              padding, masking, batching
 │   ├── model.py                BiLSTM + CRF
 │   └── train.py                training loop, seeding, early stopping
@@ -1036,9 +1318,12 @@ soften it or delete it.
 │   ├── 02_metric_check.py      Step 2 baselines
 │   ├── 03_embeddings.py        Step 3 vocabulary and vectors
 │   ├── 04_baseline.py          Step 4 BiLSTM baseline
-│   └── 05_full_train_refit.py  Step 5b full-train refit
+│   ├── 05_full_train_refit.py  Step 5b full-train refit
+│   ├── 06_subword_tokenizer.py Step 6 subword tokenizer sweep
+│   └── 07_subword_model.py     Step 7 subword model
 ├── tests/
-│   └── test_metrics.py         9 unit tests, must always pass
+│   ├── test_metrics.py         9 unit tests, must always pass
+│   └── test_subword_alignment.py 10 alignment tests, run before training
 └── results/
     ├── results.csv             every run we have ever done
     ├── step1_report.txt        output of the exploration script
@@ -1105,8 +1390,17 @@ Do not unzip the vector file. The loader reads `.gz` directly.
 **PHASE 1 COMPLETE.**
 
 Phase 2:
-- [ ] **Step 0** Move to Colab GPU, fix training speed
-- [ ] **Piece 1** Subword input
+- [x] **Step 0** Colab GPU. CRF is the bottleneck (6-8x), not batch size.
+      Verified: Colab 0.6052 vs laptop 0.6023. Reported runs use batch 32 +
+      CRF; sweeps use batch 128, no CRF.
+- [x] **Step 6** Subword tokenizer swept. **BPE beats unigram on Sinhala
+      grapheme integrity at every size.** 4 settings shortlisted.
+- [x] **Step 7** Subword encoder built, 10 alignment tests pass.
+      **0.7043 +/- 0.0052 (+0.1078).** Above XLM-T, within 0.016 of XLM-R,
+      with 379,658 trainable parameters.
+- [ ] **Step 7b** Ablations: mean pooling, no-word-channel, bpe_1000,
+      matched-parameter control, no-CRF
+- [ ] **Piece 2** Joint sentence + token head
 - [ ] **Piece 2** Joint sentence + token head
 - [ ] **Piece 3** Balanced loss
 - [ ] **Piece 4** Offline distillation from SemiSOLD

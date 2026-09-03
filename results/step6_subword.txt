@@ -1,0 +1,324 @@
+
+========================================================================
+0. DATA
+========================================================================
+train-part 6,000  validation 1,500  test 2,500
+
+The tokenizer is trained on TRAIN-PART TEXT ONLY. Training it on
+validation or test would leak information about words the model is not
+supposed to know exist.
+
+training corpus   6,000 tweets, 141,646 words
+train types       28,454
+test types        15,751
+UNSEEN test types 7,676  (48.7% of test types)
+unseen occurrences 8,524  (14.3% of test tokens)
+
+Those unseen words are what this whole component exists to rescue.
+
+========================================================================
+1. TRAIN TOKENIZERS
+========================================================================
+SentencePiece learns the pieces from raw text - no rules, no dictionary.
+  unigram : probabilistic, keeps pieces that best explain the corpus
+  bpe     : greedy, repeatedly merges the most frequent pair
+
+  unigram  requested=1000   actual=1,000
+  unigram  requested=2000   actual=2,000
+  unigram  requested=4000   actual=4,000
+  unigram  requested=8000   actual=8,000
+  unigram  requested=16000  actual=16,000
+  unigram  requested=24000  actual=20,832   (corpus supports only 20,832)
+  unigram  requested=32000  actual=20,832   (corpus supports only 20,832)
+  bpe      requested=1000   actual=1,000
+  bpe      requested=2000   actual=2,000
+  bpe      requested=4000   actual=4,000
+  bpe      requested=8000   actual=8,000
+  bpe      requested=16000  actual=16,000
+  bpe      requested=24000  actual=24,000
+  bpe      requested=32000  actual=32,000
+
+If 'actual' is capped below 'requested', the corpus does not contain enough
+distinct subword candidates for that size. Two requested sizes that cap to the
+same actual size are THE SAME MODEL and are de-duplicated in section 7.
+
+========================================================================
+2. FRAGMENTATION - how badly are ALL words shredded?
+========================================================================
+pieces_per_word is the cost side of the trade-off.
+  Near 1.0  -> barely splitting; no gain over word level
+  Above 2.5 -> shredding; the BiLSTM must reassemble meaning from fragments,
+               and piece sequences get long
+
+type        vocab  pcs/word   1 piece  2 pieces       3+
+--------------------------------------------------------
+unigram     1,000      2.09    47.4%    24.6%   28.0%
+unigram     2,000      1.78    58.5%    22.4%   19.1%
+unigram     4,000      1.56    67.5%    19.9%   12.6%
+unigram     8,000      1.36    76.0%    16.6%    7.4%
+unigram    16,000      1.21    83.5%    13.3%    3.3%
+unigram    24,000      1.18    84.2%    13.9%    1.9%
+unigram    32,000      1.18    84.2%    13.9%    1.9%
+bpe         1,000      2.10    43.9%    27.4%   28.8%
+bpe         2,000      1.79    55.3%    24.6%   20.0%
+bpe         4,000      1.56    65.2%    21.7%   13.1%
+bpe         8,000      1.38    73.5%    18.7%    7.8%
+bpe        16,000      1.24    81.7%    14.4%    3.9%
+bpe        24,000      1.17    84.7%    13.7%    1.6%
+bpe        32,000      1.12    89.1%    10.4%    0.5%
+
+========================================================================
+3. ARE UNSEEN WORDS ACTUALLY SPLIT?
+========================================================================
+If an unseen word comes out as ONE piece, the subword channel hands the
+model a single unfamiliar symbol - no better than the word channel. Unseen words
+must be split into parts that occur elsewhere for us to gain anything.
+
+type        vocab  pcs/unseen wd   kept whole   2+ pieces
+----------------------------------------------------------
+unigram     1,000           4.26        0.1%      99.9%
+unigram     2,000           3.81        0.1%      99.9%
+unigram     4,000           3.45        0.3%      99.7%
+unigram     8,000           3.14        0.7%      99.3%
+unigram    16,000           2.76        1.7%      98.3%
+unigram    24,000           2.54        2.6%      97.4%
+unigram    32,000           2.54        2.6%      97.4%
+bpe         1,000           4.09        0.2%      99.8%
+bpe         2,000           3.63        0.3%      99.7%
+bpe         4,000           3.20        0.6%      99.4%
+bpe         8,000           2.87        1.0%      99.0%
+bpe        16,000           2.65        1.7%      98.3%
+bpe        24,000           2.54        2.1%      97.9%
+bpe        32,000           2.51        2.4%      97.6%
+
+========================================================================
+4. DOES AN UNSEEN WORD'S ROOT APPEAR IN TRAINING WORDS?   <-- THE METRIC
+========================================================================
+For each unseen test word, take its pieces of at least 3 characters -
+the stem, not a grammatical ending. Then ask: does that stem also occur as a
+piece inside some word we DID see in training?
+
+If yes, the model can transfer what it learned about the training word to this
+brand-new form. That is the entire mechanism of this component.
+
+Pieces shorter than 3 characters are ignored, because single characters
+connect everything to everything and mean nothing. That is exactly what made our
+first attempt at this measurement saturate at 99.9%.
+
+type        vocab  root shared  no usable root
+-----------------------------------------------
+unigram     1,000       44.7%          55.2%
+unigram     2,000       54.3%          45.5%
+unigram     4,000       62.1%          37.8%
+unigram     8,000       69.4%          30.5%
+unigram    16,000       78.9%          20.9%
+unigram    24,000       82.7%          16.5%
+unigram    32,000       82.7%          16.5%
+bpe         1,000       45.0%          54.8%
+bpe         2,000       56.4%          43.4%
+bpe         4,000       66.9%          32.9%
+bpe         8,000       74.9%          24.8%
+bpe        16,000       78.5%          20.3%
+bpe        24,000       79.8%          17.7%
+bpe        32,000       75.0%          17.6%
+
+'root shared'    = the unseen word contains a >=3-char piece that also occurs
+                   inside training words. MAXIMISE THIS.
+'no usable root' = the word shattered into pieces all shorter than 3 chars.
+                   That is shredding, not decomposition.
+
+========================================================================
+4b. GRAPHEME INTEGRITY - are we cutting Sinhala letters in half?
+========================================================================
+Sinhala writes a syllable as a base consonant plus combining marks - vowel
+signs, and the hal kirima. Those are separate Unicode codepoints but NOT
+separate letters:
+
+    සෙ  is ONE written letter =  ස (base) + ෙ (combining vowel sign)
+
+If a piece STARTS with a combining mark, the split cut a written letter in half.
+Such a piece cannot correspond to any morpheme. This is a Sinhala-specific
+failure mode that a pieces-per-word count does not reveal.
+
+type        vocab  broken pieces  unseen wds hit  root<2 letters
+----------------------------------------------------------------
+unigram     1,000         13.6%          45.3%          45.2%
+unigram     2,000         12.5%          38.9%          34.6%
+unigram     4,000         12.0%          35.2%          25.9%
+unigram     8,000         11.5%          31.7%          19.3%
+unigram    16,000         11.4%          28.4%          11.5%
+unigram    24,000         11.0%          25.7%           8.5%
+unigram    32,000         11.0%          25.7%           8.5%
+bpe         1,000         13.9%          43.7%          42.5%
+bpe         2,000         12.0%          35.6%          29.4%
+bpe         4,000         10.2%          28.6%          20.3%
+bpe         8,000          8.8%          23.2%          14.4%
+bpe        16,000          8.0%          19.8%          11.3%
+bpe        24,000          7.9%          18.7%           9.7%
+bpe        32,000          7.7%          18.3%           9.6%
+
+'broken pieces'  = pieces that begin with a combining mark, i.e. mid-letter cuts
+'unseen wds hit' = unseen words containing at least one such piece
+'root<2 letters' = every piece is under 2 VISIBLE letters. Pure shredding.
+
+MINIMISE all three. A setting with high root-sharing but many broken graphemes
+is sharing meaningless fragments, not roots.
+
+========================================================================
+5. WHAT UNSEEN WORDS LOOK LIKE WHEN SPLIT
+========================================================================
+Real unseen Sinhala words. Judge whether these look like stem + ending.
+
+--- unigram, vocab 1,000 ---
+  හිකි                   x10   -> හි | කි
+  ┓┓┓┓┓┃                 x7    ->  | ┓┓┓┓┓┃
+  උනහම                   x5    -> උ | න | හ | ම
+  කොමිෂන්                x5    -> කො | මි | ෂ | න්
+  ටික්                   x5    -> ටික | ්
+  දිස්ත්‍රික්කය          x5    -> දි | ස් | ත් | ‍රි | ක් | ක | ය
+  සෙ                     x5    -> ස | ෙ
+  62ක්                   x4    ->  | 6 | 2 | ක්
+
+--- unigram, vocab 2,000 ---
+  හිකි                   x10   -> හි | කි
+  ┓┓┓┓┓┃                 x7    ->  | ┓┓┓┓┓┃
+  උනහම                   x5    -> උන | හ | ම
+  කොමිෂන්                x5    -> කො | මි | ෂ | න්
+  ටික්                   x5    -> ටික | ්
+  දිස්ත්‍රික්කය          x5    -> දි | ස් | ත් | ‍රි | ක් | ක | ය
+  සෙ                     x5    -> සෙ
+  62ක්                   x4    -> 6 | 2 | ක්
+
+--- unigram, vocab 8,000 ---
+  හිකි                   x10   -> හි | කි
+  ┓┓┓┓┓┃                 x7    ->  | ┓┓┓┓┓┃
+  උනහම                   x5    -> උන | හම
+  කොමිෂන්                x5    -> කො | මි | ෂන්
+  ටික්                   x5    -> ටික | ්
+  දිස්ත්‍රික්කය          x5    -> දිස්ත්‍රික් | ක | ය
+  සෙ                     x5    -> සෙ
+  62ක්                   x4    -> 62 | ක්
+
+--- bpe, vocab 1,000 ---
+  හිකි                   x10   -> හි | කි
+  ┓┓┓┓┓┃                 x7    ->  | ┓┓┓┓┓┃
+  උනහම                   x5    -> උන | හ | ම
+  කොමිෂන්                x5    -> කො | මි | ෂ | න්
+  ටික්                   x5    -> ට | ි | ක්
+  දිස්ත්‍රික්කය          x5    -> දි | ස් | ත්‍ | රි | ක්ක | ය
+  සෙ                     x5    -> සෙ
+  62ක්                   x4    ->  | 6 | 2 | ක්
+
+--- bpe, vocab 2,000 ---
+  හිකි                   x10   -> හි | කි
+  ┓┓┓┓┓┃                 x7    ->  | ┓┓┓┓┓┃
+  උනහම                   x5    -> උන | හම
+  කොමිෂන්                x5    -> කො | මි | ෂ | න්
+  ටික්                   x5    -> ට | ි | ක්
+  දිස්ත්‍රික්කය          x5    -> දි | ස් | ත්‍ | රි | ක්ක | ය
+  සෙ                     x5    -> සෙ
+  62ක්                   x4    -> 6 | 2 | ක්
+
+--- bpe, vocab 8,000 ---
+  හිකි                   x10   -> හි | කි
+  ┓┓┓┓┓┃                 x7    ->  | ┓┓┓┓┓┃
+  උනහම                   x5    -> උන | හම
+  කොමිෂන්                x5    -> කොමි | ෂන්
+  ටික්                   x5    -> ටි | ක්
+  දිස්ත්‍රික්කය          x5    -> දිස්ත්‍රි | ක්ක | ය
+  සෙ                     x5    -> සෙ
+  62ක්                   x4    -> 62 | ක්
+
+
+========================================================================
+6. OFFENSIVE WORDS - are they split sensibly?
+========================================================================
+--- unigram, vocab 1,000 ---
+  පුක                  -> පුක  <-- kept whole
+  හැත්ත                -> හැත්ත  <-- kept whole
+  සක්කිලි              -> සක්කිලි  <-- kept whole
+  නොදකින්              -> නොදකින්  <-- kept whole
+  පොන්න                -> පොන්න  <-- kept whole
+  හුජ්ජ                -> හුජ්ජ  <-- kept whole
+  පකෝ                  -> පකෝ  <-- kept whole
+  පයිය                 -> පයිය  <-- kept whole
+  කාලකණ්ණි             -> කාලකණ්ණි  <-- kept whole
+  අවජාතක               -> අවජාතක  <-- kept whole
+  බිජ්ජ                -> බිජ්ජ  <-- kept whole
+  වේසි                 -> වේසි  <-- kept whole
+
+--- unigram, vocab 4,000 ---
+  පුක                  -> පුක  <-- kept whole
+  හැත්ත                -> හැත්ත  <-- kept whole
+  සක්කිලි              -> සක්කිලි  <-- kept whole
+  නොදකින්              -> නොදකින්  <-- kept whole
+  පොන්න                -> පොන්න  <-- kept whole
+  හුජ්ජ                -> හුජ්ජ  <-- kept whole
+  පකෝ                  -> පකෝ  <-- kept whole
+  පයිය                 -> පයිය  <-- kept whole
+  කාලකණ්ණි             -> කාලකණ්ණි  <-- kept whole
+  අවජාතක               -> අවජාතක  <-- kept whole
+  බිජ්ජ                -> බිජ්ජ  <-- kept whole
+  වේසි                 -> වේසි  <-- kept whole
+
+Frequent offensive words kept whole is FINE - they already have real
+fastText vectors and plenty of training examples. What matters is that their
+STEM exists as a piece, so unseen variants of the same slur can reach it.
+
+========================================================================
+7. THE TRADE-OFF AND THE SHORTLIST
+========================================================================
+type       requested   actual  root shared   broken  pcs/all wd  pcs/unseen   ok?
+----------------------------------------------------------------------------------
+unigram       24,000   20,832       82.7%   11.0%        1.18        2.54   yes
+bpe           24,000   24,000       79.8%    7.9%        1.17        2.54   yes
+unigram       16,000   16,000       78.9%   11.4%        1.21        2.76   yes
+bpe           16,000   16,000       78.5%    8.0%        1.24        2.65   yes
+bpe           32,000   32,000       75.0%    7.7%        1.12        2.51   yes
+bpe            8,000    8,000       74.9%    8.8%        1.38        2.87   yes
+unigram        8,000    8,000       69.4%   11.5%        1.36        3.14   yes
+bpe            4,000    4,000       66.9%   10.2%        1.56        3.20   yes
+unigram        4,000    4,000       62.1%   12.0%        1.56        3.45   yes
+bpe            2,000    2,000       56.4%   12.0%        1.79        3.63   yes
+unigram        2,000    2,000       54.3%   12.5%        1.78        3.81   yes
+bpe            1,000    1,000       45.0%   13.9%        2.10        4.09   yes
+unigram        1,000    1,000       44.7%   13.6%        2.09        4.26   yes
+
+(1 duplicate rows hidden - requested sizes that capped to an
+ actual size already listed above.)
+
+'ok?' = pieces per word under 2.5, so we decompose rather than shred.
+
+THERE ARE TWO COMPETING CRITERIA, NOT ONE.
+
+  'root shared' rewards LARGE vocabularies: longer pieces are more likely to
+     match something inside a training word.
+  'broken'      often favours a DIFFERENT algorithm: a tokenizer can score well
+     on root-sharing while cutting Sinhala letters in half, and those pieces
+     cannot correspond to any morpheme.
+
+Do not rank on one column. Compare the algorithms at similar vocabulary sizes.
+
+ALSO CHECK FOR A DEGENERATE WIN. If the best setting keeps 85% of words whole,
+the subword channel is nearly a copy of the word channel for words we already
+handle, and every gain must come from the unseen words alone. That may still be
+worth it, but it is a different mechanism from real decomposition - and it
+bounds how much this component can possibly buy us.
+
+DESIGN THE SHORTLIST TO SPAN THE RANGE, NOT TO CLUSTER AT ONE END.
+Three near-identical large settings teach us almost nothing. Pick settings that
+answer different questions, then let VALIDATION F1 decide.
+
+AUTO-RANKED (by root sharing only - read the caveats above):
+  1. unigram, 20,832 pieces  (root shared 82.7%, 1.18 pcs/word, 11.0% broken)
+  2. bpe, 24,000 pieces  (root shared 79.8%, 1.17 pcs/word, 7.9% broken)
+  3. unigram, 16,000 pieces  (root shared 78.9%, 1.21 pcs/word, 11.4% broken)
+
+  The largest unigram sizes capped at the corpus limit, so that end of the
+  curve is fully explored. No need to sweep higher for unigram.
+
+  NOTE: the top setting averages only 1.18 pieces per word, meaning most
+  words are kept whole. Include a MORE FRAGMENTING setting in the experiments
+  as a contrast, or you will not learn whether decomposition helps at all.
+
+saved artifacts/subword_summary.json

@@ -51,9 +51,11 @@ def get_device() -> torch.device:
 def evaluate(model, loader, device) -> Dict[str, float]:
     model.eval()
     gold_all, pred_all = [], []
-    for ids, labels, mask, lengths, _ in loader:
+    for ids, labels, mask, lengths, _, pid, plen in loader:
         ids, mask = ids.to(device), mask.to(device)
-        preds = model.predict(ids, mask, lengths)
+        if pid is not None:
+            pid, plen = pid.to(device), plen.to(device)
+        preds = model.predict(ids, mask, lengths, pid, plen)
         gold_all.extend(unpad_predictions(labels, mask.cpu()))
         pred_all.extend(preds)
     return token_level_scores(gold_all, pred_all)
@@ -84,14 +86,16 @@ def train_one_seed(
     class_weights: Optional[torch.Tensor] = None,
     device=None,
     verbose: bool = True,
+    sp=None,
 ):
     """Train once. Returns (best_model, history, best_val_scores, seconds)."""
     device = device or get_device()
     g = set_seed(seed)
 
     model = model_fn().to(device)
-    train_loader = make_loader(train_df, vocab, batch_size, shuffle=True, generator=g)
-    val_loader = make_loader(val_df, vocab, batch_size, shuffle=False)
+    train_loader = make_loader(train_df, vocab, batch_size, shuffle=True,
+                               generator=g, sp=sp)
+    val_loader = make_loader(val_df, vocab, batch_size, shuffle=False, sp=sp)
 
     opt = torch.optim.Adam(
         [p for p in model.parameters() if p.requires_grad],
@@ -105,10 +109,14 @@ def train_one_seed(
     for epoch in range(1, max_epochs + 1):
         model.train()
         total, n_batches = 0.0, 0
-        for ids, labels, mask, lengths, _ in train_loader:
+        for ids, labels, mask, lengths, _, pid, plen in train_loader:
             ids, labels, mask = ids.to(device), labels.to(device), mask.to(device)
+            if pid is not None:
+                pid, plen = pid.to(device), plen.to(device)
             opt.zero_grad()
-            loss = model.loss(ids, labels, mask, lengths, class_weights=class_weights)
+            loss = model.loss(ids, labels, mask, lengths,
+                              class_weights=class_weights,
+                              piece_ids=pid, piece_lens=plen)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
             opt.step()
