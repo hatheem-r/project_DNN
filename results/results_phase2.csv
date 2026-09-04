@@ -10,3 +10,11 @@ final_bpe_1000_bilstm,final,bpe_1000,1000,bilstm,50,100,True,True,32,64,0.001,0.
 final_bpe_1000_bilstm,final,bpe_1000,1000,bilstm,50,100,True,True,32,64,0.001,0.5,4,35,2493.8,0.7144,0.7448,0.668,0.7043
 final_bpe_1000_bilstm,final,bpe_1000,1000,bilstm,50,100,True,True,32,64,0.001,0.5,5,37,2624.1,0.7145,0.7502,0.6808,0.7138
 final_bpe_1000_mean,final,bpe_1000,1000,mean,50,100,True,True,32,64,0.001,0.5,1,42,2560.0,0.6799,0.7486,0.6261,0.6819
+final_bpe_1000_mean,final,bpe_1000,1000,mean,50,100,True,True,32,64,0.001,0.5,2,48,4206.7,0.6748,0.771,0.6071,0.6793
+final_bpe_24000_bilstm_sd4,final,bpe_24000,24000,bilstm,50,4,True,True,32,64,0.001,0.5,1,42,6007.5,0.6339,0.7776,0.5613,0.652
+final_bpe_1000_bilstm_nowordch,final,bpe_1000,1000,bilstm,50,100,False,True,32,64,0.001,0.5,1,37,6338.0,0.7106,0.7283,0.683,0.7049
+final_bpe_1000_mean,final,bpe_1000,1000,mean,50,100,True,True,32,64,0.001,0.5,3,44,4290.2,0.687,0.7419,0.6349,0.6842
+final_bpe_1000_mean,final,bpe_1000,1000,mean,50,100,True,True,32,64,0.001,0.5,4,41,3830.2,0.6811,0.7697,0.6102,0.6808
+final_bpe_1000_bilstm_nowordch,final,bpe_1000,1000,bilstm,50,100,False,True,32,64,0.001,0.5,2,41,6694.0,0.7064,0.7308,0.6812,0.7052
+final_bpe_24000_bilstm_sd4,final,bpe_24000,24000,bilstm,50,4,True,True,32,64,0.001,0.5,2,60,7846.7,0.655,0.7497,0.5732,0.6497
+final_bpe_1000_mean,final,bpe_1000,1000,mean,50,100,True,True,32,64,0.001,0.5,5,46,4515.7,0.6799,0.7779,0.6054,0.6809

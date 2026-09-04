@@ -1,0 +1,51 @@
+
+========================================================================
+0. SETUP
+========================================================================
+device mps   mode FINAL (scores test)
+seeds [1, 2, 3, 4, 5]   batch 32   crf True   epochs<=60 patience 12
+
+row-level results append to: results/results_phase2.csv
+this readable report goes to stdout - redirect it to results/
+
+train-part 6,000  val 1,500  test 2,500
+vocab 28,456   embedding matrix (28456, 300)
+
+========================================================================
+1. FINAL RUN - bpe_1000
+========================================================================
+Frozen Phase 1 settings (batch 32, CRF on) so the number is directly
+comparable to the baseline 0.5965.
+
+--- bpe_1000  (1,000 pieces)  
+    tag: final_bpe_1000_mean
+    trainable 293,958  (subword channel 55,100, lstm input 400)
+    seed 1  val F1 0.6799   TEST F1 0.6819   (2560s, 42 epochs)
+    seed 2  val F1 0.6748   TEST F1 0.6793   (4207s, 48 epochs)
+    seed 3  val F1 0.6870   TEST F1 0.6842   (4290s, 44 epochs)
+    seed 4  val F1 0.6811   TEST F1 0.6808   (3830s, 41 epochs)
+    seed 5  val F1 0.6799   TEST F1 0.6809   (4516s, 46 epochs)
+    VAL  F1 0.6805 +/- 0.0044   (3881s/seed)
+    TEST F1 0.6814 +/- 0.0018   P 0.7618  R 0.6168
+
+========================================================================
+2. RESULT
+========================================================================
+
+  Phase 1 baseline (word only)  0.5965 +/- 0.0103
+  + subword channel             0.6814 +/- 0.0018
+  change                        +0.0849
+
+  our word list                 0.6521   <- still the floor to beat
+  published XLM-R               0.7200
+
+  precision 0.7618   recall 0.6168
+  Phase 1 was precision 0.7452, recall 0.4979.
+
+  CLEAR GAIN. +0.0849 is more than twice the noise (0.0103).
+
+  ABLATION ROWS STILL OWED
+    --pooling mean            does piece ORDER matter?
+    --no-word-channel         is fastText still needed?
+  Both at 5 seeds, same settings.
+
