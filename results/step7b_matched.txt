@@ -12,37 +12,37 @@ train-part 6,000  val 1,500  test 2,500
 vocab 28,456   embedding matrix (28456, 300)
 
 ========================================================================
-1. FINAL RUN - bpe_1000
+1. FINAL RUN - bpe_24000
 ========================================================================
 Frozen Phase 1 settings (batch 32, CRF on) so the number is directly
 comparable to the baseline 0.5965.
 
---- bpe_1000  (1,000 pieces)  
-    tag: final_bpe_1000_bilstm_nowordch
-    trainable 176,058  (subword channel 90,800, lstm input 100)
-    seed 1  val F1 0.7106   TEST F1 0.7049   (2580s, 37 epochs)
-    seed 2  val F1 0.7064   TEST F1 0.7052   (2863s, 41 epochs)
-    seed 3  val F1 0.7083   TEST F1 0.7101   (2787s, 41 epochs)
-    seed 4  val F1 0.7080   TEST F1 0.7090   (2353s, 34 epochs)
-    seed 5  val F1 0.7023   TEST F1 0.7001   (1911s, 27 epochs)
-    VAL  F1 0.7071 +/- 0.0031   (2499s/seed)
-    TEST F1 0.7059 +/- 0.0040   P 0.7253  R 0.6880
+--- bpe_24000  (24,000 pieces)  
+    tag: final_bpe_24000_bilstm_sd4
+    trainable 1,390,570  (subword channel 1,200,864, lstm input 304)
+    seed 1  val F1 0.6339   TEST F1 0.6520   (2720s, 42 epochs)
+    seed 2  val F1 0.6550   TEST F1 0.6497   (3708s, 60 epochs)
+    seed 3  val F1 0.6370   TEST F1 0.6394   (2182s, 46 epochs)
+    seed 4  val F1 0.6476   TEST F1 0.6496   (2312s, 53 epochs)
+    seed 5  val F1 0.6344   TEST F1 0.6421   (1564s, 34 epochs)
+    VAL  F1 0.6416 +/- 0.0093   (2497s/seed)
+    TEST F1 0.6466 +/- 0.0055   P 0.7720  R 0.5565
 
 ========================================================================
 2. RESULT
 ========================================================================
 
   Phase 1 baseline (word only)  0.5965 +/- 0.0103
-  + subword channel             0.7059 +/- 0.0040
-  change                        +0.1094
+  + subword channel             0.6466 +/- 0.0055
+  change                        +0.0501
 
   our word list                 0.6521   <- still the floor to beat
   published XLM-R               0.7200
 
-  precision 0.7253   recall 0.6880
+  precision 0.7720   recall 0.5565
   Phase 1 was precision 0.7452, recall 0.4979.
 
-  CLEAR GAIN. +0.1094 is more than twice the noise (0.0103).
+  CLEAR GAIN. +0.0501 is more than twice the noise (0.0103).
 
   ABLATION ROWS STILL OWED
     --pooling mean            does piece ORDER matter?

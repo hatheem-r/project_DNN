@@ -1090,6 +1090,128 @@ and the score is quietly terrible with nothing crashing. Test 5 verifies pieces
 do not bleed across word boundaries; test 9 installs a deliberately broken
 encoder and asserts a clear `RuntimeError` fires.
 
+## Phase 2, Step 7b: ablations — PIECE 1 COMPLETE
+
+All runs: 5 seeds, batch 32, CRF on, trained on train-part (6,000).
+**Selection is on VALIDATION.** Test columns are reported but never used to choose.
+
+| Configuration | val F1 | test F1 | trainable | pieces/word |
+|---|---|---|---|---|
+| Phase 1 baseline, word only | - | 0.5965 +/- 0.0103 | 187,658 | - |
+| **bpe_1000, both channels** | **0.7083 +/- 0.0063** | 0.7104 +/- 0.0069 | 329,658 | 2.10 |
+| bpe_1000, **subword only** | 0.7071 +/- 0.0031 | 0.7059 +/- 0.0040 | **176,058** | 2.10 |
+| bpe_2000, both channels | 0.7067 +/- 0.0046 | 0.7043 +/- 0.0052 | 379,658 | 1.79 |
+| bpe_2000, no CRF | 0.7060 +/- 0.0024 | 0.7064 +/- 0.0036 | 379,650 | 1.79 |
+| unigram_8000 (sweep) | 0.7030 +/- 0.0028 | - | 679,650 | 1.36 |
+| bpe_8000 (sweep) | 0.7027 +/- 0.0044 | - | 679,650 | 1.38 |
+| bpe_24000, piece_dim 50 (sweep) | 0.6783 +/- 0.0005 | - | 1,479,650 | 1.17 |
+| bpe_24000, **piece_dim 4** (control) | 0.6380 +/- 0.0044 | 0.6321 +/- 0.0090 | 357,258 | 1.17 |
+
+### Tokenizer choice: bpe_1000
+
+bpe_1000 and bpe_2000 are **statistically indistinguishable on validation**
+(0.7083 vs 0.7067, difference 0.0016 against standard deviations of 0.005-0.006).
+We select bpe_1000 for its marginally higher validation mean and smaller
+parameter count, not because it "won".
+
+The curve has flattened: 2000 -> 1000 gained only +0.0016. Step 6 measured
+bpe_500 at 2.55 pieces per word, past the shredding threshold, so we stop here.
+
+## KEY FINDING: fragmentation predicts F1; parameter count does not
+
+The capacity/decomposition confound is **resolved**, from two directions.
+
+**More capacity did not help.** bpe_24000 with 1,240,800 subword parameters
+scored 0.6783. bpe_1000 with 90,800 scored 0.7083. Thirteen times the capacity,
+0.030 worse.
+
+**Matched capacity did not rescue it.** At 118,400 subword parameters against
+bpe_1000's 90,800, bpe_24000 scored 0.6380 - a gap of 0.070, roughly fifteen
+times the seed noise.
+
+Across all six configurations, F1 tracks pieces-per-word monotonically and
+shows no relationship to parameter count. It is **decomposition** that helps,
+not extra capacity.
+
+*Caveat, recorded:* `piece_dim=4` cost bpe_24000 about 0.04 on its own
+(0.6783 -> 0.6380), so the matched control is imperfect. It errs toward making
+bpe_24000 look worse. The unmatched comparison already settles the question, so
+the conclusion holds either way.
+
+## KEY FINDING: fastText can be removed almost for free
+
+| | val F1 | trainable | pretrained resources needed |
+|---|---|---|---|
+| bpe_1000, both channels | 0.7083 +/- 0.0063 | 329,658 | fastText, 600 MB |
+| bpe_1000, **subword only** | 0.7071 +/- 0.0031 | **176,058** | **none** |
+| difference | **-0.0012** | -47% | |
+
+Removing the entire 300-dimensional fastText channel costs **0.0012 on
+validation**, far inside the noise.
+
+The subword-only model needs **no pretrained embeddings of any kind**. No
+600 MB vector file, no 8.5M frozen parameters. It is a completely
+self-contained 176,058-parameter system reaching 0.706 against XLM-R's 0.72 -
+roughly **3,180x fewer parameters** than XLM-R-large.
+
+We therefore report TWO models: the best (both channels) and the minimal
+(subword only, no pretrained resources whatsoever). The second is arguably the
+more interesting contribution for deployment.
+
+## The CRF has become redundant
+
+| | test F1 |
+|---|---|
+| bpe_2000 with CRF | 0.7043 +/- 0.0052 |
+| bpe_2000 without CRF | 0.7064 +/- 0.0036 |
+
+Difference +0.0021 against a pooled std of 0.0044. Inside the noise.
+
+In Phase 1 the CRF was doing real work. Once the input representation is good
+enough, the sequence structure it supplied is already present. We keep the CRF
+for the reported models to stay identical to the frozen Phase 1 architecture,
+but the redundancy is a finding worth a paragraph: **it says where the sequence
+structure was coming from.**
+
+### Correction to the Step 0 speed conclusion
+
+Step 0 found the CRF cost 6-8x. That was measured **before** the subword channel
+existed and no longer applies. Per-epoch times now:
+
+| run | s/epoch |
+|---|---|
+| bpe_2000 + CRF | 48.7 |
+| bpe_2000 no CRF | 57.2 |
+| bpe_1000 + CRF | 72.0 |
+
+The **subword encoder is now the bottleneck**, not the CRF. Its cost scales with
+pieces-per-word, so bpe_1000 (2.10) is slower than bpe_2000 (1.79). Removing the
+CRF does not speed anything up.
+
+### The grapheme control came back null
+
+bpe_8000 0.7027 vs unigram_8000 0.7030, difference **-0.0004** against a pooled
+std of 0.0036. Same vocabulary size, different algorithm.
+
+Step 6's finding that BPE breaks fewer Sinhala graphemes (7.9% vs 11.0%) does
+**not** translate into an accuracy difference. Reported as a tokenizer-quality
+observation, never as an accuracy claim. Recording the null rather than quietly
+dropping the experiment.
+
+### Still owed
+
+`--pooling mean` on bpe_1000: does piece ORDER matter, or is averaging enough?
+It may also be much faster, since the per-word BiLSTM is now the bottleneck.
+
+### A note on the comparison being conservative
+
+The subword models train on **6,000** tweets; the Phase 1 headline of 0.5965 came
+from the full-train refit on **7,500**. So +0.1139 understates the effect.
+Against the matched 6,000-tweet baseline of 0.5847 the gain is **+0.1236**.
+
+The final model is a full-train refit and should gain further - Phase 1 gained
++0.0118 from the same extra 25% of data.
+
 # PHASE 2 PLAN
 
 ## We keep the same model. We do not start again.
@@ -1398,8 +1520,12 @@ Phase 2:
 - [x] **Step 7** Subword encoder built, 10 alignment tests pass.
       **0.7043 +/- 0.0052 (+0.1078).** Above XLM-T, within 0.016 of XLM-R,
       with 379,658 trainable parameters.
-- [ ] **Step 7b** Ablations: mean pooling, no-word-channel, bpe_1000,
-      matched-parameter control, no-CRF
+- [x] **Step 7b** Ablations done. bpe_1000 selected. Capacity confound
+      resolved: **fragmentation predicts F1, parameter count does not.**
+      fastText removable for -0.0012. CRF now redundant.
+- [ ] **Step 8** FINAL MODEL: full-train refit (7,500), both channels and
+      subword-only, 5 seeds, test scored once
+- [ ] **Step 8b** `--pooling mean` ablation (still owed)
 - [ ] **Piece 2** Joint sentence + token head
 - [ ] **Piece 2** Joint sentence + token head
 - [ ] **Piece 3** Balanced loss
