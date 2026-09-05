@@ -1,0 +1,79 @@
+
+========================================================================
+0. SETUP
+========================================================================
+experiment: PIECE3   owner: yusri
+device cuda   seeds [1, 2, 3]   batch 64   crf False
+train-part 6,000  val 1,500  test 2,500
+fitting on 6,000 tweets (train-part)
+  scanned 808,044 lines, matched 23,314 of 28,456 vocab words
+tokenizer 1,000 pieces   vocab 28,456   matrix (28456, 300)
+inverse-frequency class weights: [0.522, 12.041]
+
+========================================================================
+PIECE 3 - BALANCED LOSS FUNCTIONS
+========================================================================
+Only 4.14% of training tokens are offensive, so plain cross-entropy is
+dominated by the easy negative class.
+
+WARNING BEFORE YOU READ THE NUMBERS. After Piece 1 the model sits near
+precision 0.74 / recall 0.68 - close to balanced. These losses all push toward
+recall, so there is far less headroom than at Phase 1's 0.75/0.50. Pushing too
+hard trades precision for recall at a NET LOSS. Read both columns.
+
+The CRF is off: it computes its own sequence likelihood and cannot take
+per-class weights. Step 7b showed it is now redundant, so this is
+evidence-backed rather than convenient.
+
+--- piece3_cross_entropy   trainable 329,650
+    seed 1  val F1 0.6981   (214s, 42 ep)
+    seed 2  val F1 0.7084   (204s, 40 ep)
+    seed 3  val F1 0.7053   (225s, 44 ep)
+    VAL  0.7039 +/- 0.0053   P 0.7146  R 0.6938   (214s/seed)
+
+--- piece3_weighted   trainable 329,650
+    seed 1  val F1 0.6017   (294s, 58 ep)
+    seed 2  val F1 0.5478   (133s, 26 ep)
+    seed 3  val F1 0.5798   (140s, 28 ep)
+    VAL  0.5764 +/- 0.0271   P 0.4294  R 0.8794   (189s/seed)
+
+--- piece3_focal   trainable 329,650
+    seed 1  val F1 0.6990   (136s, 27 ep)
+    seed 2  val F1 0.6928   (133s, 26 ep)
+    seed 3  val F1 0.7017   (167s, 31 ep)
+    VAL  0.6978 +/- 0.0046   P 0.6677  R 0.7309   (145s/seed)
+
+--- piece3_dice   trainable 329,650
+    seed 1  val F1 0.7097   (327s, 60 ep)
+    seed 2  val F1 0.7132   (316s, 60 ep)
+    seed 3  val F1 0.7068   (302s, 60 ep)
+    VAL  0.7099 +/- 0.0032   P 0.7344  R 0.6874   (315s/seed)
+
+========================================================================
+PIECE 3 RANKING
+========================================================================
+loss                val F1      std         P         R
+--------------------------------------------------------
+dice                0.7099   0.0032    0.7344    0.6874
+cross_entropy       0.7039   0.0053    0.7146    0.6938
+focal               0.6978   0.0046    0.6677    0.7309
+weighted            0.5764   0.0271    0.4294    0.8794
+
+best (dice) vs cross_entropy: +0.0059  modest gain, report with the std
+
+If the answer is null, that is a real finding and pairs with the CRF result:
+once the input representation is fixed, the downstream corrections stop
+mattering. Report it, do not bury it.
+
+========================================================================
+WHAT TO COMMIT
+========================================================================
+  results/results_piece3.csv
+  results/piece3_report.txt   (if you redirected stdout there)
+
+Commit ONLY those two files. Do not commit artifacts/ or embeddings/.
+
+    git add results/results_piece3.csv results/piece3_report.txt
+    git commit -m "piece3 results (yusri)"
+    git pull --rebase && git push
+

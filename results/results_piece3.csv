@@ -1,0 +1,13 @@
+piece,owner,tag,loss,lambda,distill,uncertainty,crf,minimal,batch,seed,seconds,trainable,val_f1,test_p,test_r,test_f1
+piece3,yusri,piece3_cross_entropy,cross_entropy,0.0,,,False,False,64,1,213.6,329650,0.6981,,,
+piece3,yusri,piece3_cross_entropy,cross_entropy,0.0,,,False,False,64,2,204.1,329650,0.7084,,,
+piece3,yusri,piece3_cross_entropy,cross_entropy,0.0,,,False,False,64,3,224.9,329650,0.7053,,,
+piece3,yusri,piece3_weighted,weighted,0.0,,,False,False,64,1,293.9,329650,0.6017,,,
+piece3,yusri,piece3_weighted,weighted,0.0,,,False,False,64,2,132.9,329650,0.5478,,,
+piece3,yusri,piece3_weighted,weighted,0.0,,,False,False,64,3,140.0,329650,0.5798,,,
+piece3,yusri,piece3_focal,focal,0.0,,,False,False,64,1,136.0,329650,0.699,,,
+piece3,yusri,piece3_focal,focal,0.0,,,False,False,64,2,133.4,329650,0.6928,,,
+piece3,yusri,piece3_focal,focal,0.0,,,False,False,64,3,166.6,329650,0.7017,,,
+piece3,yusri,piece3_dice,dice,0.0,,,False,False,64,1,326.5,329650,0.7097,,,
+piece3,yusri,piece3_dice,dice,0.0,,,False,False,64,2,316.0,329650,0.7132,,,
+piece3,yusri,piece3_dice,dice,0.0,,,False,False,64,3,301.7,329650,0.7068,,,
