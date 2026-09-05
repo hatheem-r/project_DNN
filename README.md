@@ -1212,6 +1212,119 @@ Against the matched 6,000-tweet baseline of 0.5847 the gain is **+0.1236**.
 The final model is a full-train refit and should gain further - Phase 1 gained
 +0.0118 from the same extra 25% of data.
 
+## Phase 2, Step 8: FINAL MODEL — PIECE 1 COMPLETE
+
+Full-train refit. The tokenizer, word vocabulary and embedding matrix were all
+rebuilt on the full 7,500-tweet split. No early stopping (no validation set is
+left), so a **fixed 35 epochs** was used - the median best-epoch from the
+bpe_1000 validation runs (30, 30, 41, 35, 37). That budget came from validation,
+never from test.
+
+Two models trained, 5 seeds each, test scored once.
+
+| Model | F1 | std | P | R | Trainable | Needs pretrained? |
+|---|---|---|---|---|---|---|
+| Published BiLSTM + CBOW | 0.58 | | | | | |
+| Published BiLSTM + fastText | 0.60 | | 0.74 | 0.48 | | |
+| Our Phase 1 baseline | 0.5965 | 0.0103 | 0.7452 | 0.4979 | 187,658 | fastText |
+| Published SinBERT | 0.62 | | | | ~110M | yes |
+| Our word list | 0.6521 | | 0.6361 | 0.6689 | 0 | no |
+| *ours, mean pooling (ablation)* | *0.6822* | *0.0092* | *0.7931* | *0.5991* | *293,958* | |
+| Published XLM-T | 0.70 | | 0.64 | 0.77 | ~270M | yes |
+| **OURS: word + subword** | **0.7002** | 0.0034 | 0.7284 | 0.6751 | 329,658 | fastText |
+| **OURS: subword only** | **0.7079** | 0.0066 | 0.7426 | 0.6771 | **176,058** | **none** |
+| Published XLM-R | 0.72 | | 0.68 | 0.76 | ~560M | yes |
+| Published XLM-R + TSD transfer | 0.73 | | | | ~560M | yes |
+
+Minimal model per-seed: 0.7123, 0.7062, 0.7170, 0.7008, 0.7034. 825s per seed
+on a Colab T4.
+
+## KEY FINDING: the best model needs no pretrained embeddings at all
+
+The **subword-only** model - no fastText, no PLM, nothing downloaded - scored
+**0.7079** against the full model's 0.7002.
+
+Removing the entire 300-dimensional fastText channel did not merely cost
+nothing; it scored slightly higher. The gap is about 1.5 pooled standard
+deviations, so the honest phrasing is **indistinguishable or marginally
+better**, not "better". Either way the conclusion holds: fastText is not
+carrying the result.
+
+That makes the minimal model our strongest claim:
+
+- **176,058 trainable parameters**
+- **no pretrained embeddings of any kind** - no 600 MB vector file, no frozen
+  embedding table, nothing to download
+- **0.7079 F1**, above published XLM-T (0.70) and within 0.012 of XLM-R (0.72)
+- **3,181x fewer trainable parameters** than XLM-R-large
+
+For deployment this is the interesting model. It is fully self-contained.
+
+## KEY FINDING: piece ORDER matters — mean pooling loses
+
+The last owed ablation, answered.
+
+| Pooling | F1 | P | R |
+|---|---|---|---|
+| BiLSTM over pieces | 0.7002 | 0.7284 | 0.6751 |
+| Mean over pieces | **0.6822** | **0.7931** | **0.5991** |
+
+A drop of 0.018 at roughly 2.6 pooled standard deviations. Real, not noise.
+
+**How it fails is the interesting part.** Mean pooling raises precision to 0.7931
+and drops recall to 0.5991 - it reverts toward the timid Phase 1 behaviour.
+Averaging the pieces destroys the information about WHERE in the word each piece
+sits.
+
+This supports the agglutinative argument directly: in Sinhala a word's ENDING
+carries grammatical information distinct from its stem, and a representation that
+cannot tell a stem from a suffix loses exactly the signal that lets the model
+recognise an unseen variant of a familiar root.
+
+## The full-train refit did NOT help this time
+
+| Trained on | Model | test F1 |
+|---|---|---|
+| 6,000 (Step 7b) | bpe_1000, both channels | 0.7104 +/- 0.0069 |
+| 7,500 (Step 8) | bpe_1000, both channels | 0.7002 +/- 0.0034 |
+
+The extra 25% of data made it **worse** by 0.010. Phase 1 gained +0.0118 from
+the same extra data, so this is a genuine difference in behaviour and we report
+it rather than quietly using the higher number.
+
+Most likely cause: **the fixed epoch budget**. At 6,000 tweets each seed
+early-stopped at its own best epoch (30, 30, 41, 35, 37) chosen on validation.
+The refit gives every seed the same 35 epochs with no per-seed selection. The
+minimal model, by contrast, improved slightly with more data (0.7059 -> 0.7079),
+so the effect is not uniform.
+
+**We report the refit numbers as the headline** because they match the protocol
+used for the 0.5965 baseline, which was also a full-train refit. Like-for-like
+comparison matters more than the larger number.
+
+## Piece 1 summary: what we can claim
+
+**Result.** Adding a subword channel to a BiLSTM token classifier raises
+offensive-token F1 from 0.5965 to 0.7002 with both channels, or 0.7079 with the
+subword channel alone.
+
+**Mechanism.** The gain is recall-driven at near-constant precision: recall
+0.4979 -> 0.6771 while precision moves 0.7452 -> 0.7426. This was predicted in
+advance from the measured 48.7% unseen-type rate, and it is not what a threshold
+shift or a generic capacity increase produces.
+
+**Cause isolated.** Fragmentation predicts F1 across six configurations;
+parameter count does not, in either direction (13x more capacity scored worse;
+matched capacity scored worse still). It is decomposition that helps.
+
+**Efficiency.** 176,058 trainable parameters with no pretrained resources,
+against XLM-R-large's ~560M.
+
+**What we cannot claim.** That BPE's better Sinhala grapheme integrity improves
+accuracy - that control came back null. That we match XLM-R - we do not, we are
+0.012 below it. That more training data helps this architecture - it did not
+here.
+
 # PHASE 2 PLAN
 
 ## We keep the same model. We do not start again.
@@ -1259,7 +1372,8 @@ complete, honest paper about those two pieces.
 |---|---|
 | Our BiLSTM baseline (Phase 1, frozen) | **0.5965 +/- 0.0103** |
 | Our word list | **0.6521** |
-| **+ subword channel (Step 7)** | **0.7043 +/- 0.0052**  <- current best |
+| + subword channel, 6,000 tweets (Step 7) | 0.7043 +/- 0.0052 |
+| **FINAL: subword only, full train (Step 8)** | **0.7079 +/- 0.0066**  <- current best |
 | Published SinBERT | 0.62 |
 | Published XLM-R | 0.72 |
 
@@ -1442,7 +1556,8 @@ soften it or delete it.
 │   ├── 04_baseline.py          Step 4 BiLSTM baseline
 │   ├── 05_full_train_refit.py  Step 5b full-train refit
 │   ├── 06_subword_tokenizer.py Step 6 subword tokenizer sweep
-│   └── 07_subword_model.py     Step 7 subword model
+│   ├── 07_subword_model.py     Step 7 subword model
+│   └── 08_final_model.py       Step 8 final full-train refit
 ├── tests/
 │   ├── test_metrics.py         9 unit tests, must always pass
 │   └── test_subword_alignment.py 10 alignment tests, run before training
@@ -1523,10 +1638,16 @@ Phase 2:
 - [x] **Step 7b** Ablations done. bpe_1000 selected. Capacity confound
       resolved: **fragmentation predicts F1, parameter count does not.**
       fastText removable for -0.0012. CRF now redundant.
-- [ ] **Step 8** FINAL MODEL: full-train refit (7,500), both channels and
-      subword-only, 5 seeds, test scored once
-- [ ] **Step 8b** `--pooling mean` ablation (still owed)
+- [x] **Step 8** FINAL MODEL. Full-train refit, both models, 5 seeds.
+      **word+subword 0.7002 +/- 0.0034; subword-only 0.7079 +/- 0.0066 with
+      176,058 params and NO pretrained embeddings.**
+- [x] **Step 8b** `--pooling mean` ablation: **0.6822, piece order matters.**
+
+**PIECE 1 COMPLETE.**
+
 - [ ] **Piece 2** Joint sentence + token head
+- [ ] **Piece 3** Balanced loss
+- [ ] **Piece 4** Offline distillation from SemiSOLD
 - [ ] **Piece 2** Joint sentence + token head
 - [ ] **Piece 3** Balanced loss
 - [ ] **Piece 4** Offline distillation from SemiSOLD
