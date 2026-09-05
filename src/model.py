@@ -150,6 +150,10 @@ class BiLSTMTagger(nn.Module):
         subword_dim: int = 100,
         subword_pooling: str = "bilstm",
         use_word_channel: bool = True,
+        # Phase 2, Piece 2: optional sentence head
+        sentence_head: bool = False,
+        # Phase 2, Piece 3: token loss when not using the CRF
+        token_loss=None,
     ):
         super().__init__()
         vocab_size, dim = embedding_matrix.shape
@@ -190,6 +194,25 @@ class BiLSTMTagger(nn.Module):
                               "pip install pytorch-crf")
         self.crf = CRF(num_labels, batch_first=True) if self.use_crf else None
         self.num_labels = num_labels
+        self.token_loss = token_loss
+
+        # PIECE 2. A second output on the SAME encoder: is the whole tweet
+        # offensive? Two views of one phenomenon, so forcing one BiLSTM to serve
+        # both regularises it - valuable when token labels are only 4% positive
+        # and we have 7,500 tweets.
+        #
+        # It is also the docking port for Piece 4. SemiSOLD's 145k extra tweets
+        # carry SENTENCE-level teacher scores only, with no token labels, so
+        # distillation cannot reach the token head directly. It trains this
+        # head, and the shared encoder carries the benefit across.
+        self.sentence_head = None
+        if sentence_head:
+            self.sentence_head = nn.Sequential(
+                nn.Dropout(dropout),
+                nn.Linear(hidden_size * 2, hidden_size),
+                nn.Tanh(),
+                nn.Linear(hidden_size, 2),
+            )
 
     # ------------------------------------------------------------------
     def emissions(self, ids, lengths, piece_ids=None, piece_lens=None) -> torch.Tensor:
@@ -214,7 +237,22 @@ class BiLSTMTagger(nn.Module):
         )
         out, _ = self.lstm(packed)
         out, _ = pad_packed_sequence(out, batch_first=True, total_length=ids.size(1))
+        self._last_encoder_out = out
         return self.classifier(self.dropout(out))
+
+    def encode(self, ids, lengths, piece_ids=None, piece_lens=None):
+        """Run the shared encoder and return its per-token states."""
+        self.emissions(ids, lengths, piece_ids, piece_lens)
+        return self._last_encoder_out
+
+    def sentence_logits(self, ids, mask, lengths, piece_ids=None, piece_lens=None):
+        """Masked mean-pool the encoder states, then classify the whole tweet."""
+        if self.sentence_head is None:
+            raise ValueError("Model has no sentence head. Pass sentence_head=True.")
+        h = self.encode(ids, lengths, piece_ids, piece_lens)
+        m = mask.unsqueeze(-1).to(h.dtype)
+        pooled = (h * m).sum(dim=1) / m.sum(dim=1).clamp(min=1.0)
+        return self.sentence_head(pooled)
 
     # ------------------------------------------------------------------
     def loss(
@@ -226,19 +264,52 @@ class BiLSTMTagger(nn.Module):
         class_weights: Optional[torch.Tensor] = None,
         piece_ids: Optional[torch.Tensor] = None,
         piece_lens: Optional[torch.Tensor] = None,
+        sentence_labels: Optional[torch.Tensor] = None,
+        sentence_lambda: float = 0.0,
     ) -> torch.Tensor:
         em = self.emissions(ids, lengths, piece_ids, piece_lens)
 
         if self.use_crf:
             # CRF needs real labels everywhere; padding is excluded by the mask.
+            # It computes its own sequence likelihood and cannot take per-class
+            # weights, which is why the Piece 3 loss comparison runs without it.
             safe = labels.clone()
             safe[~mask] = 0
-            return -self.crf(em, safe, mask=mask, reduction="mean")
+            total = -self.crf(em, safe, mask=mask, reduction="mean")
+        elif self.token_loss is not None:
+            total = self.token_loss(em, labels)
+        else:
+            loss_fn = nn.CrossEntropyLoss(weight=class_weights, ignore_index=-100)
+            total = loss_fn(em.reshape(-1, self.num_labels), labels.reshape(-1))
 
-        loss_fn = nn.CrossEntropyLoss(weight=class_weights, ignore_index=-100)
-        return loss_fn(em.reshape(-1, self.num_labels), labels.reshape(-1))
+        # PIECE 2: add the sentence task, scaled by lambda.
+        if self.sentence_head is not None and sentence_labels is not None:
+            m = mask.unsqueeze(-1).to(self._last_encoder_out.dtype)
+            pooled = (self._last_encoder_out * m).sum(1) / m.sum(1).clamp(min=1.0)
+            slog = self.sentence_head(pooled)
+            total = total + sentence_lambda * nn.functional.cross_entropy(
+                slog, sentence_labels)
+        return total
 
     # ------------------------------------------------------------------
+    def distillation_loss(self, ids, mask, lengths, soft_targets,
+                          piece_ids=None, piece_lens=None, temperature: float = 1.0):
+        """PIECE 4. Learn from SemiSOLD's saved teacher scores.
+
+        soft_targets is P(offensive) per tweet, precomputed by the SOLD authors
+        in 2022 and stored as columns in a public file. No pretrained language
+        model is ever loaded, run, or backpropagated through here - we consume a
+        published artifact exactly as we consume the gold labels.
+
+        These targets are SENTENCE level. There are no token labels in SemiSOLD,
+        so this touches only the sentence head; the shared encoder is what
+        carries any benefit to the token head.
+        """
+        slog = self.sentence_logits(ids, mask, lengths, piece_ids, piece_lens)
+        logp = nn.functional.log_softmax(slog / temperature, dim=-1)
+        tgt = torch.stack([1.0 - soft_targets, soft_targets], dim=-1)
+        return -(tgt * logp).sum(dim=-1).mean() * (temperature ** 2)
+
     @torch.no_grad()
     def predict(
         self, ids: torch.Tensor, mask: torch.Tensor, lengths: torch.Tensor,
@@ -263,6 +334,8 @@ class BiLSTMTagger(nn.Module):
             "frozen": total - trainable,
             "word_embedding": self.embedding.weight.numel(),
             "subword_channel": sub,
+            "sentence_head": sum(p.numel() for p in self.sentence_head.parameters())
+                              if self.sentence_head is not None else 0,
             "lstm_input_dim": self.lstm_input_dim,
             "non_embedding_trainable": trainable - (
                 self.embedding.weight.numel() if self.embedding.weight.requires_grad else 0

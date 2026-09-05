@@ -87,6 +87,9 @@ def train_one_seed(
     device=None,
     verbose: bool = True,
     sp=None,
+    sentence_lambda: float = 0.0,
+    distill_loader=None,
+    distill_weight: float = 1.0,
 ):
     """Train once. Returns (best_model, history, best_val_scores, seconds)."""
     device = device or get_device()
@@ -109,14 +112,32 @@ def train_one_seed(
     for epoch in range(1, max_epochs + 1):
         model.train()
         total, n_batches = 0.0, 0
-        for ids, labels, mask, lengths, _, pid, plen in train_loader:
+        distill_iter = iter(distill_loader) if distill_loader is not None else None
+        for ids, labels, mask, lengths, sent, pid, plen in train_loader:
             ids, labels, mask = ids.to(device), labels.to(device), mask.to(device)
             if pid is not None:
                 pid, plen = pid.to(device), plen.to(device)
             opt.zero_grad()
             loss = model.loss(ids, labels, mask, lengths,
                               class_weights=class_weights,
-                              piece_ids=pid, piece_lens=plen)
+                              piece_ids=pid, piece_lens=plen,
+                              sentence_labels=sent.to(device) if sentence_lambda else None,
+                              sentence_lambda=sentence_lambda)
+            # PIECE 4: one unlabeled SemiSOLD batch per labeled batch.
+            if distill_iter is not None:
+                try:
+                    d = next(distill_iter)
+                except StopIteration:
+                    distill_iter = iter(distill_loader)
+                    d = next(distill_iter)
+                d_ids, d_mask, d_len, d_pid, d_plen, d_soft = d
+                d_ids, d_mask = d_ids.to(device), d_mask.to(device)
+                d_soft = d_soft.to(device)
+                if d_pid is not None:
+                    d_pid, d_plen = d_pid.to(device), d_plen.to(device)
+                loss = loss + distill_weight * model.distillation_loss(
+                    d_ids, d_mask, d_len, d_soft, d_pid, d_plen)
+
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
             opt.step()
