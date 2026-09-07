@@ -1,0 +1,80 @@
+
+========================================================================
+0. SETUP
+========================================================================
+experiment: PIECE4   owner: Imindu
+device cuda   seeds [1, 2, 3]   batch 64   crf False
+train-part 6,000  val 1,500  test 2,500
+fitting on 6,000 tweets (train-part)
+  scanned 808,044 lines, matched 23,314 of 28,456 vocab words
+tokenizer 1,000 pieces   vocab 28,456   matrix (28456, 300)
+inverse-frequency class weights: [0.522, 12.041]
+
+========================================================================
+PIECE 4 - OFFLINE DISTILLATION FROM SemiSOLD
+========================================================================
+Loading SemiSOLD (145k tweets with saved teacher scores)...
+Downloading readme:   0%|          | 0.00/7.87k [00:00<?, ?B/s]Downloading readme: 100%|██████████| 7.87k/7.87k [00:00<00:00, 14.4kB/s]Downloading readme: 100%|██████████| 7.87k/7.87k [00:00<00:00, 14.4kB/s]
+Downloading data:   0%|          | 0.00/70.0M [00:00<?, ?B/s]Downloading data:  15%|█▍        | 10.5M/70.0M [00:04<00:25, 2.34MB/s]Downloading data:  30%|██▉       | 21.0M/70.0M [00:04<00:09, 4.99MB/s]Downloading data:  45%|████▍     | 31.5M/70.0M [00:05<00:04, 8.34MB/s]Downloading data:  60%|█████▉    | 41.9M/70.0M [00:05<00:02, 11.3MB/s]Downloading data:  75%|███████▍  | 52.4M/70.0M [00:06<00:01, 13.9MB/s]Downloading data:  90%|████████▉ | 62.9M/70.0M [00:06<00:00, 16.1MB/s]Downloading data: 100%|██████████| 70.0M/70.0M [00:09<00:00, 7.03MB/s]Downloading data: 100%|██████████| 70.0M/70.0M [00:09<00:00, 7.56MB/s]
+Generating train split:   0%|          | 0/145994 [00:00<?, ? examples/s]Generating train split:  14%|█▎        | 20000/145994 [00:00<00:01, 111860.93 examples/s]Generating train split:  27%|██▋       | 40000/145994 [00:00<00:01, 102019.23 examples/s]Generating train split:  41%|████      | 60000/145994 [00:00<00:00, 88457.03 examples/s] Generating train split:  48%|████▊     | 70000/145994 [00:00<00:00, 79970.91 examples/s]Generating train split:  55%|█████▍    | 80000/145994 [00:01<00:00, 70230.48 examples/s]Generating train split:  62%|██████▏   | 90000/145994 [00:01<00:00, 70457.68 examples/s]Generating train split:  68%|██████▊   | 100000/145994 [00:01<00:00, 67599.21 examples/s]Generating train split:  75%|███████▌  | 110000/145994 [00:01<00:00, 66614.97 examples/s]Generating train split:  82%|████████▏ | 120000/145994 [00:01<00:00, 67646.21 examples/s]Generating train split:  89%|████████▉ | 130000/145994 [00:01<00:00, 67753.01 examples/s]Generating train split:  96%|█████████▌| 140000/145994 [00:01<00:00, 67039.66 examples/s]Generating train split: 100%|██████████| 145994/145994 [00:01<00:00, 73465.35 examples/s]
+rows: 145,994
+columns: ['post_id', 'text', 'xlmr', 'xlmt', 'mbert', 'sinbert', 'lstm_ft', 'cnn_ft', 'lstm_cbow', 'cnn_cbow', 'lstm_sl', 'cnn_sl', 'svm']
+teacher score columns found: 11 of 11  ['xlmr', 'xlmt', 'mbert', 'sinbert', 'lstm_ft', 'cnn_ft', 'lstm_cbow', 'cnn_cbow', 'lstm_sl', 'cnn_sl', 'svm']
+
+  teachers used: ['xlmr', 'xlmt', 'sinbert']
+  145,994 rows -> 91,503 kept at uncertainty <= 0.1
+  soft target mean 0.216, 17.9% lean offensive
+
+No pretrained language model is loaded, run, or backpropagated through here.
+The teacher scores were computed by the dataset authors in 2022 and stored as
+columns in a public file. We consume a published artifact.
+
+They are SENTENCE level - SemiSOLD has no token labels - so distillation trains
+the sentence head, and the shared encoder carries any benefit to the tokens.
+
+--- piece4_dw0.0   trainable 338,036  (sentence head 8,386)
+    seed 1  val F1 0.6964   (279s, 39 ep)
+    seed 2  val F1 0.6980   (324s, 45 ep)
+    seed 3  val F1 0.6962   (386s, 54 ep)
+    VAL  0.6969 +/- 0.0010   P 0.7450  R 0.6549   (330s/seed)
+
+--- piece4_dw0.5   trainable 338,036  (sentence head 8,386)
+    seed 1  val F1 0.7104   (697s, 60 ep)
+    seed 2  val F1 0.7029   (421s, 36 ep)
+    seed 3  val F1 0.7066   (695s, 60 ep)
+    VAL  0.7066 +/- 0.0038   P 0.7486  R 0.6693   (604s/seed)
+
+--- piece4_dw1.0   trainable 338,036  (sentence head 8,386)
+    seed 1  val F1 0.7103   (634s, 55 ep)
+    seed 2  val F1 0.7107   (695s, 60 ep)
+    seed 3  val F1 0.7049   (690s, 59 ep)
+    VAL  0.7086 +/- 0.0032   P 0.7568  R 0.6667   (673s/seed)
+
+========================================================================
+PIECE 4 RANKING
+========================================================================
+ distill w    val F1      std         P         R
+--------------------------------------------------
+       0.0    0.6969   0.0010    0.7450    0.6549
+       0.5    0.7066   0.0038    0.7486    0.6693
+       1.0    0.7086   0.0032    0.7568    0.6667
+
+best weight=1.0 vs no distillation: +0.0117  CLEAR GAIN
+
+The authors found lightweight models gain most from this augmentation
+(BiLSTM+CBOW +2.78%, XLM-R +0.63%). If we see nothing, one likely reason is
+that Piece 1 already moved us into the "already strong" regime where they
+observed little benefit. Say that, with their numbers cited.
+
+========================================================================
+WHAT TO COMMIT
+========================================================================
+  results/results_piece4.csv
+  results/piece4_report.txt   (if you redirected stdout there)
+
+Commit ONLY those two files. Do not commit artifacts/ or embeddings/.
+
+    git add results/results_piece4.csv results/piece4_report.txt
+    git commit -m "piece4 results (Imindu)"
+    git pull --rebase && git push
+

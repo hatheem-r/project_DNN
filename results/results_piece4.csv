@@ -1,0 +1,10 @@
+piece,owner,tag,loss,lambda,distill,uncertainty,crf,minimal,batch,seed,seconds,trainable,val_f1,test_p,test_r,test_f1
+piece4,Imindu,piece4_dw0.0,cross_entropy,0.3,0.0,0.1,False,False,64,1,279.4,338036,0.6964,,,
+piece4,Imindu,piece4_dw0.0,cross_entropy,0.3,0.0,0.1,False,False,64,2,323.6,338036,0.698,,,
+piece4,Imindu,piece4_dw0.0,cross_entropy,0.3,0.0,0.1,False,False,64,3,386.0,338036,0.6962,,,
+piece4,Imindu,piece4_dw0.5,cross_entropy,0.3,0.5,0.1,False,False,64,1,696.6,338036,0.7104,,,
+piece4,Imindu,piece4_dw0.5,cross_entropy,0.3,0.5,0.1,False,False,64,2,420.9,338036,0.7029,,,
+piece4,Imindu,piece4_dw0.5,cross_entropy,0.3,0.5,0.1,False,False,64,3,695.1,338036,0.7066,,,
+piece4,Imindu,piece4_dw1.0,cross_entropy,0.3,1.0,0.1,False,False,64,1,633.6,338036,0.7103,,,
+piece4,Imindu,piece4_dw1.0,cross_entropy,0.3,1.0,0.1,False,False,64,2,694.8,338036,0.7107,,,
+piece4,Imindu,piece4_dw1.0,cross_entropy,0.3,1.0,0.1,False,False,64,3,690.5,338036,0.7049,,,
