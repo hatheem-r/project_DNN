@@ -136,7 +136,7 @@ def build(loss_kind="cross_entropy", sentence_head=False):
     return fn
 
 
-def log(tag, seed, val_f1, s, secs, params):
+def log(tag, seed, val_f1, s, secs, params, loss_kind=None, lam=None):
     os.makedirs("results", exist_ok=True)
     fields = ["piece", "owner", "tag", "loss", "lambda", "distill", "uncertainty",
               "crf", "minimal", "batch", "seed", "seconds", "trainable", "val_f1",
@@ -147,7 +147,9 @@ def log(tag, seed, val_f1, s, secs, params):
         if new:
             w.writeheader()
         w.writerow({"piece": PIECE, "owner": args.owner,
-                    "tag": tag, "loss": args.loss, "lambda": args.lam,
+                    "tag": tag,
+                    "loss": args.loss if loss_kind is None else loss_kind,
+                    "lambda": args.lam if lam is None else lam,
                     "distill": args.distill_weight if args.piece4 or args.final else "",
                     "uncertainty": args.uncertainty if args.piece4 or args.final else "",
                     "crf": USE_CRF, "minimal": args.minimal, "batch": BATCH,
@@ -180,7 +182,8 @@ def run(tag, loss_kind, lam, distill_loader=None, score_test=False):
             tests.append(ts)
             line += f"   TEST {ts['offensive_f1']:.4f}"
         print(line + f"   ({secs:.0f}s, {len(hist)} ep)")
-        log(tag, seed, best_val["offensive_f1"], ts, secs, params)
+        log(tag, seed, best_val["offensive_f1"], ts, secs, params,
+            loss_kind=loss_kind, lam=lam)
 
     va = aggregate_seeds(vals)
     print(f"    VAL  {va['offensive_f1']['mean']:.4f} +/- {va['offensive_f1']['std']:.4f}"

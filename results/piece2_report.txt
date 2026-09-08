@@ -1,0 +1,109 @@
+
+========================================================================
+0. SETUP
+========================================================================
+experiment: PIECE2   owner: Sabith
+device cuda   seeds [1, 2, 3, 4, 5]   batch 64   crf False
+
+Downloading readme:   0%|          | 0.00/7.93k [00:00<?, ?B/s]
+Downloading readme: 100%|██████████| 7.93k/7.93k [00:00<00:00, 95.0kB/s]
+
+Downloading data:   0%|          | 0.00/4.72M [00:00<?, ?B/s]
+Downloading data: 100%|██████████| 4.72M/4.72M [00:00<00:00, 30.6MB/s]
+Downloading data: 100%|██████████| 4.72M/4.72M [00:00<00:00, 29.5MB/s]
+
+Downloading data:   0%|          | 0.00/1.60M [00:00<?, ?B/s]
+Downloading data: 100%|██████████| 1.60M/1.60M [00:00<00:00, 19.1MB/s]
+
+Generating train split:   0%|          | 0/7500 [00:00<?, ? examples/s]
+Generating train split: 100%|██████████| 7500/7500 [00:00<00:00, 40377.94 examples/s]
+Generating train split: 100%|██████████| 7500/7500 [00:00<00:00, 39691.73 examples/s]
+
+Generating test split:   0%|          | 0/2500 [00:00<?, ? examples/s]
+Generating test split: 100%|██████████| 2500/2500 [00:00<00:00, 48683.35 examples/s]
+train-part 6,000  val 1,500  test 2,500
+fitting on 6,000 tweets (train-part)
+  scanned 808,044 lines, matched 23,314 of 28,456 vocab words
+tokenizer 1,000 pieces   vocab 28,456   matrix (28456, 300)
+inverse-frequency class weights: [0.522, 12.041]
+
+========================================================================
+PIECE 2 - JOINT SENTENCE + TOKEN HEAD
+========================================================================
+A second output on the SAME encoder: is the whole tweet offensive?
+Two views of one phenomenon, so forcing one BiLSTM to serve both regularises it.
+
+loss = token_loss + lambda * sentence_loss
+
+lambda 0 is the Piece 1 model exactly. This head is also the docking port for
+Piece 4 - SemiSOLD's teacher scores are sentence level, so without it
+distillation has nothing to attach to.
+
+--- piece2_lam0.0   trainable 329,650
+    seed 1  val F1 0.7046   (209s, 32 ep)
+    seed 2  val F1 0.7013   (221s, 34 ep)
+    seed 3  val F1 0.7047   (221s, 34 ep)
+    seed 4  val F1 0.7074   (304s, 47 ep)
+    seed 5  val F1 0.7071   (239s, 37 ep)
+    VAL  0.7050 +/- 0.0025   P 0.7201  R 0.6911   (239s/seed)
+
+--- piece2_lam0.1   trainable 338,036  (sentence head 8,386)
+    seed 1  val F1 0.7048   (314s, 48 ep)
+    seed 2  val F1 0.6994   (223s, 34 ep)
+    seed 3  val F1 0.7011   (321s, 49 ep)
+    seed 4  val F1 0.6997   (341s, 52 ep)
+    seed 5  val F1 0.7113   (302s, 46 ep)
+    VAL  0.7033 +/- 0.0050   P 0.7273  R 0.6814   (300s/seed)
+
+--- piece2_lam0.3   trainable 338,036  (sentence head 8,386)
+    seed 1  val F1 0.6964   (255s, 39 ep)
+    seed 2  val F1 0.6980   (298s, 45 ep)
+    seed 3  val F1 0.6962   (354s, 54 ep)
+    seed 4  val F1 0.6916   (328s, 50 ep)
+    seed 5  val F1 0.7008   (302s, 46 ep)
+    VAL  0.6966 +/- 0.0033   P 0.7446  R 0.6545   (307s/seed)
+
+--- piece2_lam0.5   trainable 338,036  (sentence head 8,386)
+    seed 1  val F1 0.6928   (396s, 60 ep)
+    seed 2  val F1 0.6973   (284s, 43 ep)
+    seed 3  val F1 0.6897   (288s, 44 ep)
+    seed 4  val F1 0.6972   (263s, 40 ep)
+    seed 5  val F1 0.6943   (217s, 33 ep)
+    VAL  0.6943 +/- 0.0032   P 0.7582  R 0.6408   (289s/seed)
+
+--- piece2_lam1.0   trainable 338,036  (sentence head 8,386)
+    seed 1  val F1 0.6872   (393s, 60 ep)
+    seed 2  val F1 0.6791   (308s, 47 ep)
+    seed 3  val F1 0.6829   (295s, 45 ep)
+    seed 4  val F1 0.6823   (346s, 53 ep)
+    seed 5  val F1 0.6854   (274s, 42 ep)
+    VAL  0.6834 +/- 0.0031   P 0.7731  R 0.6126   (323s/seed)
+
+========================================================================
+PIECE 2 RANKING
+========================================================================
+  lambda    val F1      std         P         R
+------------------------------------------------
+     0.0    0.7050   0.0025    0.7201    0.6911
+     0.1    0.7033   0.0050    0.7273    0.6814
+     0.3    0.6966   0.0033    0.7446    0.6545
+     0.5    0.6943   0.0032    0.7582    0.6408
+     1.0    0.6834   0.0031    0.7731    0.6126
+
+best lambda=0.1 vs lambda=0: -0.0018  NO MEASURABLE EFFECT - report the null
+
+Use --lambda 0.1 for Piece 4 even if the gain here is null:
+the sentence head is REQUIRED for distillation to have anywhere to go.
+
+========================================================================
+WHAT TO COMMIT
+========================================================================
+  results/results_piece2.csv
+  results/piece2_report.txt   (if you redirected stdout there)
+
+Commit ONLY those two files. Do not commit artifacts/ or embeddings/.
+
+    git add results/results_piece2.csv results/piece2_report.txt
+    git commit -m "piece2 results (Sabith)"
+    git pull --rebase && git push
+
