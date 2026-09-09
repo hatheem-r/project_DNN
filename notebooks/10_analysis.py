@@ -36,7 +36,7 @@ from train import set_seed, get_device
 from metrics import token_level_scores
 
 VEC = os.environ.get("SOLD_VECTORS", "embeddings/cc.si.300.vec.gz")
-CKPT = "artifacts/analysis_model.pt"
+CKPT_BASE = "artifacts/analysis_model"
 SP_PREFIX = "artifacts/sp_final_bpe_1000_fulltrain"
 EPOCHS, BATCH, SEED = 35, 32, 1
 SP_MARK = "\u2581"
@@ -53,6 +53,10 @@ ap.add_argument("--errors", action="store_true")
 ap.add_argument("--efficiency", action="store_true")
 ap.add_argument("--minimal", action="store_true",
                 help="analyse the subword-only model instead of word + subword")
+ap.add_argument("--word-only", action="store_true",
+                help="analyse the PHASE 1 BASELINE (no subword channel). Use this "
+                     "to get the seen/unseen breakdown for the baseline, which is "
+                     "what makes the Section 7.7 comparison meaningful.")
 ap.add_argument("--examples", type=int, default=24)
 ap.add_argument("--epochs", type=int, default=EPOCHS)
 args = ap.parse_args()
@@ -67,10 +71,17 @@ device = get_device()
 train_full = load_sold("train")
 test = load_sold("test")
 print(f"device {device}   train {len(train_full):,}   test {len(test):,}")
-print(f"model: {'subword only' if args.minimal else 'word + subword'}")
+_names = {"wordonly": "word only (PHASE 1 BASELINE, no subword channel)",
+          "minimal": "subword only", "full": "word + subword"}
 
 os.makedirs("artifacts", exist_ok=True)
 os.makedirs("results", exist_ok=True)
+
+# Separate checkpoint per configuration, so the three models never overwrite
+# each other and a --word-only run cannot silently reuse a subword model.
+variant = "wordonly" if args.word_only else ("minimal" if args.minimal else "full")
+CKPT = f"{CKPT_BASE}_{variant}.pt"
+print(f"checkpoint: {CKPT}")
 
 if not os.path.exists(SP_PREFIX + ".model"):
     print("training the tokenizer on the full train split")
@@ -84,10 +95,18 @@ if not os.path.exists(VEC):
     sys.exit(1)
 vectors, dim = load_vectors_for_vocab(VEC, vocab, verbose=False)
 matrix, _ = build_embedding_matrix(vocab, vectors, dim)
+SP_ARG = None if args.word_only else sp
+print(f"model: {_names[variant]}")
 print(f"tokenizer {sp.get_piece_size():,} pieces   vocab {len(vocab):,}")
+if args.word_only:
+    print("  (tokenizer NOT used - this is the no-subword baseline)")
 
 
 def build():
+    """--word-only reproduces the Phase 1 baseline: no subword channel at all."""
+    if args.word_only:
+        return BiLSTMTagger(matrix, hidden_size=64, dropout=0.5,
+                            freeze_embeddings=True, use_crf=True)
     return BiLSTMTagger(
         matrix, hidden_size=64, dropout=0.5, freeze_embeddings=True, use_crf=True,
         n_pieces=sp.get_piece_size(), piece_dim=50, subword_dim=100,
@@ -105,7 +124,7 @@ def get_model():
     print(f"no checkpoint; training one seed for {args.epochs} epochs "
           f"(about 14 minutes on a T4)")
     g = set_seed(SEED)
-    loader = make_loader(train_full, vocab, BATCH, shuffle=True, generator=g, sp=sp)
+    loader = make_loader(train_full, vocab, BATCH, shuffle=True, generator=g, sp=SP_ARG)
     opt = torch.optim.Adam(
         [q for q in model.parameters() if q.requires_grad], lr=1e-3)
     for ep in range(1, args.epochs + 1):
@@ -135,7 +154,7 @@ if args.errors:
     model.eval()
 
     rule("1. PREDICTIONS ON THE TEST SPLIT")
-    loader = make_loader(test, vocab, BATCH, shuffle=False, sp=sp)
+    loader = make_loader(test, vocab, BATCH, shuffle=False, sp=SP_ARG)
     gold_all, pred_all = [], []
     with torch.no_grad():
         for ids, lab, mask, lens, _, pid, plen in loader:
@@ -193,7 +212,16 @@ INTERPRET CAREFULLY, AND REPORT WHICHEVER IT IS.
   not solve it. Say that; it is an honest limitation and a clear direction for
   future work.
   A small gap means the mechanism claim is strongly supported.
-  Either way this number belongs in Section 7.7.""")
+  Either way this number belongs in Section 7.7.
+
+TO MAKE THIS COMPARISON MEANINGFUL, run the SAME breakdown on the Phase 1
+baseline, which has no subword channel:
+
+    python notebooks/10_analysis.py --errors --word-only > results/error_analysis_wordonly.txt
+
+The unseen-bucket F1 from that run is the reference point. Our unseen F1 minus
+the baseline's unseen F1 is how much the subword channel actually bought on
+unseen words - which is the number the mechanism claim rests on.""")
 
     # ------------------------------------------------------------------
     rule("3. THE MOST FREQUENT INDIVIDUAL ERRORS")
@@ -264,11 +292,11 @@ disagreement. That judgement requires reading Sinhala and cannot be automated.
 
 Reviewers consistently reward this section and almost no student paper has one.""")
 
-    with open("results/error_analysis_raw.json", "w") as fh:
+    with open(f"results/error_analysis_raw_{variant}.json", "w") as fh:
         json.dump({"gold": gold_all, "pred": pred_all,
                    "tokens": [list(t) for t in test["token_list"]],
                    "labels": list(test["label"])}, fh)
-    print("\nraw predictions saved to results/error_analysis_raw.json")
+    print(f"\nraw predictions saved to results/error_analysis_raw_{variant}.json")
 
 
 # ==========================================================================
@@ -282,7 +310,7 @@ if args.efficiency:
     for k, v in p.items():
         print(f"  {k:<26} {v:>14,}")
 
-    loader = make_loader(test, vocab, BATCH, shuffle=False, sp=sp)
+    loader = make_loader(test, vocab, BATCH, shuffle=False, sp=SP_ARG)
     batches = list(loader)
 
     def run_all():
