@@ -1,0 +1,40 @@
+
+========================================================================
+0. SETUP
+========================================================================
+device cpu   train 7,500   test 2,500
+model: word + subword
+tokenizer 1,000 pieces   vocab 33,006
+
+========================================================================
+EFFICIENCY MEASUREMENTS - FOR SECTION 9
+========================================================================
+loaded artifacts/analysis_model.pt
+parameters (measured):
+  total                          10,231,458
+  trainable                         329,658
+  frozen                          9,901,800
+  word_embedding                  9,901,800
+  subword_channel                    90,800
+  sentence_head                           0
+  lstm_input_dim                        400
+  non_embedding_trainable           329,658
+
+inference over the full test split, measured on cpu:
+  tweets                 2,500
+  real tokens            59,670
+  wall clock             2.58s
+  tweets per second      968
+  tokens per second      23,100
+  ms per tweet           1.033
+
+  model size at float32  ~40.9 MB
+  external files needed  cc.si.300.vec.gz (460 MB)
+
+FOR THE PAPER.
+Report these as MEASURED and state the hardware and batch size (32).
+Published transformer figures should be cited as parameter counts only, unless
+you time XLM-R yourself on the same GPU in inference-only mode. Loading a model
+to time its forward pass is not fine-tuning, so that comparison is available to
+you if you want a like-for-like throughput number - but say clearly which figures
+are measured and which are cited.

@@ -1,0 +1,179 @@
+
+========================================================================
+0. SETUP
+========================================================================
+
+Downloading readme:   0%|          | 0.00/7.93k [00:00<?, ?B/s]
+Downloading readme: 100%|██████████| 7.93k/7.93k [00:00<00:00, 29.6kB/s]
+Downloading readme: 100%|██████████| 7.93k/7.93k [00:00<00:00, 29.5kB/s]
+
+Downloading data:   0%|          | 0.00/4.72M [00:00<?, ?B/s]
+Downloading data: 100%|██████████| 4.72M/4.72M [00:00<00:00, 30.8MB/s]
+Downloading data: 100%|██████████| 4.72M/4.72M [00:00<00:00, 29.8MB/s]
+
+Downloading data:   0%|          | 0.00/1.60M [00:00<?, ?B/s]
+Downloading data: 100%|██████████| 1.60M/1.60M [00:00<00:00, 7.35MB/s]
+Downloading data: 100%|██████████| 1.60M/1.60M [00:00<00:00, 7.28MB/s]
+
+Generating train split:   0%|          | 0/7500 [00:00<?, ? examples/s]
+Generating train split: 100%|██████████| 7500/7500 [00:00<00:00, 38413.74 examples/s]
+Generating train split: 100%|██████████| 7500/7500 [00:00<00:00, 37662.79 examples/s]
+
+Generating test split:   0%|          | 0/2500 [00:00<?, ? examples/s]
+Generating test split: 100%|██████████| 2500/2500 [00:00<00:00, 43884.12 examples/s]
+device cuda   train 7,500   test 2,500
+model: word + subword
+training the tokenizer on the full train split
+tokenizer 1,000 pieces   vocab 33,006
+no checkpoint; training one seed for 35 epochs (about 14 minutes on a T4)
+  epoch 10/35  loss 1.3643
+  epoch 20/35  loss 1.1209
+  epoch 30/35  loss 0.9511
+  epoch 35/35  loss 0.8889
+saved artifacts/analysis_model.pt
+
+========================================================================
+1. PREDICTIONS ON THE TEST SPLIT
+========================================================================
+  P 0.7460   R 0.6631   F1 0.7021
+  2,268 offensive of 59,670 tokens
+
+  This is ONE seed, so it will differ slightly from the 5-seed mean
+  reported in the paper. Use the 5-seed figure for any headline claim.
+
+========================================================================
+2. ERRORS BY WORD FAMILIARITY   <-- TESTS OUR CENTRAL CLAIM
+========================================================================
+Our claim is that subwords help on words never seen in training. This
+table tests it directly: does the model still fail disproportionately on unseen
+words, or has that gap closed?
+
+bucket        tokens      TP      FP      FN        P        R       F1
+--------------------------------------------------------------------
+seen          51,819   1,398     423     602   0.7677   0.6990   0.7317
+unseen         7,851     106      89     162   0.5436   0.3955   0.4579
+
+  seen minus unseen F1: +0.2739
+
+INTERPRET CAREFULLY, AND REPORT WHICHEVER IT IS.
+  A large positive gap means subwords narrowed the unseen-word problem but did
+  not solve it. Say that; it is an honest limitation and a clear direction for
+  future work.
+  A small gap means the mechanism claim is strongly supported.
+  Either way this number belongs in Section 7.7.
+
+========================================================================
+3. THE MOST FREQUENT INDIVIDUAL ERRORS
+========================================================================
+FALSE POSITIVES - flagged but not offensive:
+
+    27x  තෝ                       (seen)
+    17x  කාලකණ්ණි                 (seen)
+    13x  නොදකින්                  (seen)
+    10x  ගොන්                     (seen)
+     9x  තොපි                     (seen)
+     8x  තොට                      (seen)
+     8x  පිස්සා                   (seen)
+     7x  බැල්ලි                   (seen)
+     7x  යකෝ                      (seen)
+     6x  නාකි                     (seen)
+     6x  රෙද්ද                    (seen)
+     6x  පිස්සු                   (seen)
+     6x  සාප                      (seen)
+     6x  තමුසෙ                    (seen)
+     5x  බල්ලා                    (seen)
+
+FALSE NEGATIVES - offensive but missed:
+
+    34x  රෙද්ද                    (seen)  ->  රෙද්ද
+    28x  යකෝ                      (seen)  ->  යකෝ
+    18x  තෝ                       (seen)  ->  තෝ
+    15x  ගොන්                     (seen)  ->  ගොන්
+    10x  පිස්සු                   (seen)  ->  පිස්සු
+    10x  නොදකින්                  (seen)  ->  නොදකින්
+    10x  තොපි                     (seen)  ->  තොපි
+    10x  මෝඩ                      (seen)  ->  මෝඩ
+     9x  බඩුව                     (seen)  ->  බඩුව
+     9x  පලයන්                    (seen)  ->  පලයන්
+     8x  හෙන                      (seen)  ->  හෙන
+     8x  තොට                      (seen)  ->  තොට
+     7x  පස්ස                     (seen)  ->  පස්ස
+     6x  පට්ට                     (seen)  ->  පට්ට
+     6x  පල                       (seen)  ->  පල
+
+Piece splits are shown for the misses so you can check whether a missed word
+decomposed into a root the model should have recognised. If it did and the model
+still missed it, the failure is contextual rather than lexical - which is a
+different and more interesting kind of error.
+
+========================================================================
+4. EXAMPLE TWEETS FOR SECTION 7.7
+========================================================================
+Legend:  [word] correct hit   <word> false positive   {word} missed
+
+--- PERFECT ---
+  #4  sentence label = OFF
+    @USER ගොසිප් පීපල් නෙමේ [හුත්තො] . [තෝ] වගේ හොරෙක්ට මේකෙ ආයෙ දඩයං හොයන්න දෙන්නෑ . එච්චරයි
+  #20  sentence label = OFF
+    [යකෝ] [හුජ්ජ] පාරක් නිදහසේවත් දාන්න තැනක් නෑනේ ෂිට් හැමතැනම CCTV කැමරා ෆක් : 3 — feeling crazy
+  #36  sentence label = OFF
+    @USER @USER [බිජ්ජ] කපන්න හිතිල ඉන්නෙ ජයේ
+  #43  sentence label = OFF
+    විය යුතු දේවල් මේව තමයි නිදහස් අධ්‍යාපනයෙන් ඉගෙනගෙ ඉහලට ඇවිත් තවත් ඒවගේ දුක් විදල ඉගෙනගන්න එන එකෙකුට වද දෙනව. . . . . මොක්කු හැදුවද දන්නෙනෑ නවක වදේ කියල මේවගේ [අවජාතක] සස්කෘති . . . .
+  #48  sentence label = OFF
+    ඕනම කෙනෙකුට ඕනවට වඩා [පුක] දෙන්න එපා. ( ලෙඩක් හැදිච්ච ගමන් ගිහිං ෆාමසි වලිං බෙහෙත් අරං දෙනවා වගේ දේවල් ) Λ ｎｊａｎａ @USER 31 Mar 2021 මාර්තු මාසෙන් ඉගන ගත්ත පාඩම
+  #56  sentence label = OFF
+    @USER මහින්ද ගේ [මෝඩ] [මුසලයා] නේද ?
+
+--- OVER-FLAGGED ---
+  #6  sentence label = NOT
+    කේන්තියෙන්ම මං ඔයාගේ තාත්තට මෝඩයා කියල බැන්නා . තාත්තට පුදුමයි . . එයා ඇහුව ඔයා කොහොමද මට එහෙම කතා කරේ කියල . මං කේන්තියෙන් පිපිරී පිපිරී තව හයියෙන් කෑගැහුවා . මොඩයා <බූරුවා> ගොනා පිස්සා . . ඔය වගේ හැම වචනයක්ම . ඔයා හිතන්නේ එයා මොනව කලා කියලද . . .
+  #13  sentence label = OFF
+    දේශපාලුවෝ බහුතරය පූජකයන්ට කැමතියි , මොකද ඕන [ගොන්] වැඩකට සාදු / හලලුයා කියන්න , [ගොන්] කතාවක් අහගෙන එකට වැදගෙන ඉන්න අමන ජනයට පුරදු පුහුණු කරන්නේ එව්වා සාමාන්‍ය දේවල් කරන්නේ <පූජකයෝ> නිසා . .
+  #14  sentence label = OFF
+    @USER මේ <කාලකන්නි> දේශපාලඥයන්ගේ <අමන> ප්‍රකාශ නිසා තවදුරටත් සිද්ධවෙන්නේ සාමාන්‍ය මුස්ලිම් මිනිස්සුන්ව අනිත් මිනිස්සු විසින් තවදුරටත් පිළිකුල් කිරීම කරුණාකරලා අනවශ්‍ය දේවල් ප්‍රකාශ කරලා ජනතාව කුපිත කරන්නැතුව ඉන්නවා හිටපං [පකයෝ] [පකයො]
+  #15  sentence label = NOT
+    එම්බල පුරෝහිත <තොට> <අමු> කැවිලද . ?
+  #16  sentence label = NOT
+    අපි මානසික රෝග හැදිච්ච මිනිස්සුන්ට සලකන්නේ කිසිම කරුනාවක් නැතුවයී . මිනිස්සුන්ට බනින්නේත් " <පිස්සා> " කියලයී . මනෝ චිකිත්සක රෝහලට කියන්නේ පිස්සන් කොටුව කියලයී . ඒ වුනාට පාර දිගේ බෞද්ධ කොඩි දාලා , අපි හොඳ බෞද්ධ රටක් කියලයී කියන්නේ .
+  #21  sentence label = OFF
+    @USER මම නෙවේ කැපුවෙ වස්තුවේ . . සැලොන් එකේ [මෝඩ] <ගෑණි> . ආයෙ වැවෙයි .
+
+--- UNDER-FLAGGED ---
+  #12  sentence label = OFF
+    මෙහෙවු කැබිනට් එකක මං ඉදලම නෑ . . කැබිනට් ප්‍රකාශක {පිස්සු} {කෙලින්නේ} . . ආණ්ඩුව ගිවිසුම සැප්තැම්බරයේ ඉවරයි . . එතකොට URL
+  #29  sentence label = OFF
+    * කාරුණික සිහිගැන්වීමකි * හෙළයිනි , අභූත ප්‍රභූත්වයක් ආරූඩ කරගත් දෙසිය විසිපහේ {අජූත} {භූත} රැල ඔබගෙ ගෙමිදුලට වද්දා ගැනීමෙන් වළකින්න ! කිසිදා නොපිපෙන කුණු පොහොට්ටු රොත්තද එක්සත් විජාතික පක්ෂයේ බෙලහීනයන්ද කාල් මාක්ස්ගේ [අවජාතක] මන්ද දරුවන් ටිකද අන් සියළු දේශපාලුවන්ද මින් අදහස් වේ . # lka
+  #40  sentence label = OFF
+    @USER @USER {අඩො} {ගෙම්බා} එක්ක සජියට බයින්න එපා හරිය
+  #41  sentence label = OFF
+    @USER @USER වීරයයි ගෑනි රැවුලෙන් අල්ලං . . . " තමුසෙ කොහෙද යන්නෙ . . . මෙන්නෙ මෙහෙ ඉන්නව {හොම්බ} {තලාගන්නැතිව} " කියයි කියල
+  #63  sentence label = OFF
+    @USER ඊයා {ඕයී} මේ මොකාද , මෙහෙ ඉස්සර හිටියා [පොන්න] සරා කියලා එකෙක් මේක දැක්කම {ඌවම} මතක් උනා ඌ වගේමයි . ඒ {ප} $ & මගෙ පස්සෙන් ඇවිත් . . . . නෑ ඔය ඇති
+  #72  sentence label = OFF
+    @USER , @USER @USER මේකේ ඇරියස් කියන ඒවා {තොපි} තව දැකලා නෑ . රස්සා අතේ රෝල් කරං ගෙවල් වල යන්ඩ උනා හිට . ඕවානේ යකෝ ඇරියස්
+
+--- MIXED ---
+  #37  sentence label = OFF
+    වැදගත් වඩකට ගෑනියෙක් කෝල් කලත් ඔව් මිස් , හරි මිස් , ඕකෙ මිස් , කියවෙනෝ ඔපිස් පුරුද්දට . . {නොදකින්} මෙ <නාකි> ඔපීසිය
+  #46  sentence label = OFF
+    @USER @USER 10 others [තෝ] {පට්ට} {වෙස්සි} [තම්බින්ට] <රෙද්ද> උස්සන හින්දා වෙන්න ඇතිනේ [තොට] මෙච්චර <රිදෙන්නේ> , [තෝ] වගේ [කැහි] [වේස] [හුකන] {බල්ලියෝන්} ගේ පව්ල් පිටින් [තොත්] එක්කව කුඩු වෙලා යන්න ඕනේ [පර] [වෙසිගේ] දුව. . . රටේ ජාතියේ කරුමේට ඉපදුන [කාලකන්නි] {වෙස} [හැතිකරේ] , [තොගේ] [කැහි] [හුත්ත] කුණු වෙලා වන වෙලා යන්න ඕනේ , [පර] [බැල්ලි]
+  #128  sentence label = OFF
+    Dear commentator අපි බෝල ටික දාගන්නම් [පකෝ] . . [තෝ] කට වහන් {හිටපන්කෝ} <උට්ට> . . . # RoadSafetyWorldSeries2021
+  #217  sentence label = OFF
+    cancel {කරපංකෝ} මගේ civic rights , මම කවුද කියල බලාගන්න , තියන්නෙත් එකයි {රෙද්ද} - Honda civic <පාරිභෝගිකයෙක්> CMN @USER 19 Aug 2017 Should cancel civic rights of all the corrupt persons including the ministers in the present government , - @USER
+  #220  sentence label = OFF
+    <තෝ> තමා ඔක්කොම කලේ {බරී} {කැල්ලා} @USER @USER දැක්කා නේ deffy : @USER 25 Jan 2019 හැම එකක්ම ඇහුවෙ මම මුං කනියව අහුකරලා twitter . com / Its_DHD / status
+  #272  sentence label = OFF
+    @USER සාගර මේ දන්න නොදන්ම හැම {රෙද්දම} දන්නව වගේ <රගන්ඩ> එපා. ගෑනියෙක් උනත් පිරිමියෙක් උනත් කරන්නේ [සක්කිලි] කම්නම් උන් [සක්කිලිම] තමා
+
+NEXT STEP, AND IT NEEDS A HUMAN.
+
+Pick five to eight examples above and write Section 7.7. For each, say WHY the
+model behaved as it did: an unseen inflection of a known root, offence carried by
+context rather than any single word, sarcasm, or a plausible annotation
+disagreement. That judgement requires reading Sinhala and cannot be automated.
+
+Reviewers consistently reward this section and almost no student paper has one.
+
+raw predictions saved to results/error_analysis_raw.json
