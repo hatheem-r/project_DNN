@@ -2,6 +2,40 @@
 
 CS3631 group project, University of Moratuwa.
 
+## Current status
+
+**All experiments complete.** Remaining work is the paper, an error analysis, and
+efficiency measurements.
+
+| Model | Offensive-token F1 | Trainable params | Pretrained artefact |
+|---|---|---|---|
+| Published BiLSTM + fastText | 0.60 | — | word vectors |
+| Our reproduction | 0.5965 +/- 0.0103 | 187,658 | word vectors |
+| Our lexicon baseline | 0.6521 | 0 | none |
+| Published XLM-T | 0.70 | ~270M | model weights |
+| Ours: word + subword | 0.7002 +/- 0.0034 | 329,658 | word vectors |
+| **Ours: subword only** | **0.7079 +/- 0.0066** | **176,058** | **none** |
+| Published XLM-R | 0.72 | ~560M | model weights |
+| Published XLM-R + TSD | 0.73 | ~560M | model weights |
+
+Four findings, in order of importance:
+
+1. **Subword decomposition raises F1 from 0.5965 to 0.7079**, above published
+   XLM-T and within 0.012 of XLM-R, at ~3,180x fewer trainable parameters and
+   with no pretrained embeddings of any kind.
+2. **The gain is recall-driven at constant precision** (recall 0.498 -> 0.677,
+   precision 0.745 -> 0.743), matching a mechanism predicted in advance from a
+   measured 48.7% unseen-word-type rate.
+3. **Fragmentation, not capacity, causes it.** Two independent controls: 13x more
+   capacity scores worse, and matched capacity scores worse still.
+4. **Four downstream corrections all stop mattering** once the representation is
+   fixed - CRF, class-balanced losses, a joint sentence head, and distillation
+   from 145,994 auto-scored tweets.
+
+Plus two by-products: a lexicon baseline that beats three published neural
+systems, and a correction to the precision/recall reported in the dataset's own
+evaluation code.
+
 ## What this project does
 
 Most systems can only say "this tweet is offensive" or "this tweet is not offensive".
@@ -1325,7 +1359,125 @@ accuracy - that control came back null. That we match XLM-R - we do not, we are
 0.012 below it. That more training data helps this architecture - it did not
 here.
 
-# PHASE 2 PLAN
+## Pieces 2, 3 and 4 — all three complete, all three null
+
+Run in parallel by three team members on Colab T4. Each experiment contains its
+own control, so none depended on the others. All selection on **validation**;
+test was not touched by any of these.
+
+Base model: bpe_1000 subword channel + fastText, CRF off (Step 7b showed it
+redundant), batch 64.
+
+### Piece 3 — balanced loss functions (3 seeds)
+
+| Loss | P | R | val F1 |
+|---|---|---|---|
+| **Dice** | 0.7344 | 0.6874 | **0.7099 +/- 0.0032** |
+| Cross-entropy (control) | 0.7146 | 0.6938 | 0.7039 +/- 0.0053 |
+| Focal (gamma 2, alpha 0.75) | 0.6677 | 0.7309 | 0.6978 +/- 0.0046 |
+| Inverse-frequency weighted | 0.4294 | 0.8794 | 0.5764 +/- 0.0271 |
+
+Dice gives +0.0059 over cross-entropy, about 1.4 pooled standard deviations.
+Suggestive, not significant at three seeds. **Needs a five-seed confirmation
+before it goes in the paper as anything more than suggestive.**
+
+**Inverse-frequency weighting fails spectacularly and instructively.** Recall
+climbs to 0.8794 but precision collapses to 0.4294, a net F1 loss of 0.128. This
+is the regime change the subword channel caused: at the word-level baseline the
+model sat at precision 0.745 / recall 0.498, where recall-oriented corrections
+had real headroom. It now sits near 0.74 / 0.68, close to balanced, and further
+recall pressure trades away more precision than it buys.
+
+### Piece 2 — joint sentence + token head (5 seeds)
+
+| lambda | P | R | val F1 |
+|---|---|---|---|
+| **0.0 (control)** | 0.7201 | 0.6911 | **0.7050 +/- 0.0025** |
+| 0.1 | 0.7273 | 0.6814 | 0.7033 +/- 0.0050 |
+| 0.3 | 0.7446 | 0.6545 | 0.6966 +/- 0.0033 |
+| 0.5 | 0.7582 | 0.6408 | 0.6943 +/- 0.0032 |
+| 1.0 | 0.7731 | 0.6126 | 0.6834 +/- 0.0031 |
+
+**The sentence head does not help at any weight, and hurts monotonically as its
+weight rises.**
+
+The trend is interpretable rather than random. As lambda increases, precision
+rises 0.72 -> 0.77 while recall falls 0.69 -> 0.61. On a corpus where 58% of
+tweets are non-offensive, the sentence objective pushes the shared encoder toward
+predicting the negative class - directly opposing the recall-oriented benefit the
+subword channel provides.
+
+### Piece 4 — offline distillation from SemiSOLD (3 seeds, lambda 0.3)
+
+SemiSOLD: 145,994 unlabelled tweets with confidence scores from all 11
+classifiers, released by the SOLD authors in 2022. We averaged the three
+strongest teachers (xlmr, xlmt, sinbert) into a soft target and kept tweets whose
+disagreement (std across those three) was <= 0.1, retaining **91,503** tweets.
+
+| Distillation weight | P | R | val F1 |
+|---|---|---|---|
+| 0.0 (control, lambda 0.3) | 0.7450 | 0.6549 | 0.6969 +/- 0.0010 |
+| 0.5 | 0.7486 | 0.6693 | 0.7066 +/- 0.0038 |
+| **1.0** | 0.7568 | 0.6667 | **0.7086 +/- 0.0032** |
+
+## IMPORTANT: Piece 4's headline gain is measured from a degraded control
+
+The script reported "+0.0117 CLEAR GAIN". **That comparison is misleading and
+must not be used as-is.**
+
+Piece 4 ran with `--lambda 0.3`, so its no-distillation control is the
+lambda = 0.3 model at 0.6969. Piece 2 shows lambda = 0.3 is already **0.0084
+below** the model with no sentence head (0.7050).
+
+| | val F1 | std |
+|---|---|---|
+| Piece 1 model, no sentence head (lambda 0) | 0.7050 | 0.0025 |
+| + sentence head (lambda 0.3) | 0.6966 | 0.0033 |
+| + sentence head + distillation (weight 1.0) | **0.7086** | 0.0032 |
+| **net gain over Piece 1** | **+0.0036** | ~1.2 pooled std |
+
+**Distillation largely repairs the damage caused by the sentence head it
+requires, rather than adding to the subword result.** The honest net figure is
++0.0036, inside noise.
+
+Report both the within-experiment comparison and this correction. Reporting only
+the +0.0117 would overstate the effect.
+
+### Deviation from the authors' filtering, recorded
+
+The SOLD authors report ~8,474 instances at a nominal uncertainty threshold of
+0.1; we retained 91,503 at the same nominal threshold. Their disagreement measure
+evidently differs from our standard deviation across the top three teachers. This
+is a documented deviation, not an error, and belongs in the paper.
+
+## KEY FINDING: once the representation is fixed, the corrections stop mattering
+
+Four separate interventions, each measured properly:
+
+| Intervention | Effect | Seeds |
+|---|---|---|
+| CRF (Step 7b) | +0.0021, inside noise | 5 |
+| Class-balanced losses (Piece 3) | +0.0059 best case, ~1.4 std | 3 |
+| Joint sentence head (Piece 2) | **-0.0018 at best, monotonically worse** | 5 |
+| Distillation (Piece 4) | +0.0036 net, ~1.2 std | 3 |
+
+Three of these were beneficial or plausible in the word-level regime. None
+survives once the subword channel is present.
+
+**One explanation covers all four: these methods compensate for an inadequate
+input representation, and their benefit diminishes when that representation is
+improved directly.**
+
+This is the spine of the paper. It is a more interesting claim than four
+components each contributing a sliver, and unlike that story, our ablation table
+actually supports it.
+
+The SOLD authors' own observation supports the distillation half: they found
+lightweight models gain most from SemiSOLD augmentation (BiLSTM+CBOW +2.78%,
+XLM-R +0.63%) and that gains shrink when the classifier is already strong. Piece 1
+appears to have moved us into that regime.
+
+# PHASE 2 PLAN (superseded — kept as the record of what we set out to do)
 
 ## We keep the same model. We do not start again.
 
@@ -1540,38 +1692,57 @@ soften it or delete it.
 ```
 .
 ├── configs/
-│   └── baseline.yaml           all hyperparameters live here
+│   └── baseline.yaml               all hyperparameters, never hardcoded
 ├── src/
-│   ├── data.py                 the ONLY place that loads the dataset
-│   ├── metrics.py              the ONLY place that calculates F1
-│   ├── embeddings.py           vocabulary and fastText loading
-│   ├── subword.py              SentencePiece training and diagnostics
-│   ├── dataset.py              padding, masking, batching
-│   ├── model.py                BiLSTM + CRF
-│   └── train.py                training loop, seeding, early stopping
+│   ├── data.py                     the ONLY place that loads the dataset
+│   ├── metrics.py                  the ONLY place that calculates F1
+│   ├── embeddings.py               vocabulary and fastText loading
+│   ├── subword.py                  SentencePiece training and diagnostics
+│   ├── dataset.py                  padding, masking, two-level batching
+│   ├── model.py                    BiLSTM + CRF + subword + sentence head
+│   ├── losses.py                   weighted / focal / dice (Piece 3)
+│   ├── semisold.py                 SemiSOLD loading and filtering (Piece 4)
+│   └── train.py                    training loop, seeding, early stopping
 ├── notebooks/
-│   ├── 01_data_exploration.py  Step 1 checks
-│   ├── 02_metric_check.py      Step 2 baselines
-│   ├── 03_embeddings.py        Step 3 vocabulary and vectors
-│   ├── 04_baseline.py          Step 4 BiLSTM baseline
-│   ├── 05_full_train_refit.py  Step 5b full-train refit
-│   ├── 06_subword_tokenizer.py Step 6 subword tokenizer sweep
-│   ├── 07_subword_model.py     Step 7 subword model
-│   └── 08_final_model.py       Step 8 final full-train refit
+│   ├── 01_data_exploration.py      Step 1 data checks
+│   ├── 02_metric_check.py          Step 2 metric + trivial baselines
+│   ├── 03_embeddings.py            Step 3 vocabulary and vectors
+│   ├── 04_baseline.py              Step 4 BiLSTM baseline
+│   ├── 05_full_train_refit.py      Step 5b full-train refit
+│   ├── 06_subword_tokenizer.py     Step 6 tokenizer sweep
+│   ├── 07_subword_model.py         Step 7 subword model + ablations
+│   ├── 08_final_model.py           Step 8 final model
+│   └── 09_pieces_234.py            Pieces 2, 3 and 4
 ├── tests/
-│   ├── test_metrics.py         9 unit tests, must always pass
-│   └── test_subword_alignment.py 10 alignment tests, run before training
-└── results/
-    ├── results.csv             every run we have ever done
-    ├── step1_report.txt        output of the exploration script
-    ├── step2_report.txt        output of the metric check
-    ├── step3_report.txt        output of the embedding check
-    └── step4_report.txt        output of the baseline run
-
-Not committed (see .gitignore):
-  embeddings/   cc.si.300.vec.gz, several hundred MB
-  artifacts/    embedding_matrix.npy and vocab.txt, regenerable
+│   ├── test_metrics.py             9 tests, must always pass
+│   └── test_subword_alignment.py   10 tests, run BEFORE any training
+├── docs/
+│   ├── TEAM_TASKS.md               per-person instructions
+│   └── PAPER_DRAFT.md              the paper
+├── results/                        every report and CSV (committed)
+├── phase2_step0_colab.ipynb        GPU setup and speed benchmark
+├── phase2_final_model_colab.ipynb  Step 8
+├── phase2_pieces234_colab.ipynb    Pieces 2/3/4
+└── requirements.txt
 ```
+
+Not committed (see `.gitignore`): `embeddings/` (the ~460 MB fastText file),
+`artifacts/` (tokenizers and embedding matrices, all regenerable), `.venv/`.
+
+### Results files
+
+| File | What |
+|---|---|
+| `results/results.csv` | Phase 1 baseline runs |
+| `results/results_phase2.csv` | Step 7/7b subword ablations |
+| `results/results_piece2.csv` | joint sentence head sweep |
+| `results/results_piece3.csv` | loss function comparison |
+| `results/results_piece4.csv` | distillation sweep |
+| `results/step*_report.txt` | readable report per step |
+| `results/piece*_report.txt` | readable report per piece |
+
+Every Pieces 2/3/4 row records `piece` and `owner`, so results stay traceable to
+whoever ran them.
 
 ## Rules for the team
 
@@ -1645,12 +1816,34 @@ Phase 2:
 
 **PIECE 1 COMPLETE.**
 
-- [ ] **Piece 2** Joint sentence + token head
-- [ ] **Piece 3** Balanced loss
-- [ ] **Piece 4** Offline distillation from SemiSOLD
-- [ ] **Piece 2** Joint sentence + token head
-- [ ] **Piece 3** Balanced loss
-- [ ] **Piece 4** Offline distillation from SemiSOLD
+- [x] **Piece 3** Balanced losses (yusri). Dice +0.0059, ~1.4 std.
+      Inverse-frequency weighting collapses precision to 0.43.
+- [x] **Piece 2** Joint sentence head (Sabith). **Null - hurts monotonically.**
+- [x] **Piece 4** Distillation (Imindu). +0.0036 net over Piece 1, inside noise.
+
+**ALL EXPERIMENTS COMPLETE.**
+
+Remaining:
+- [ ] Error analysis with real Sinhala examples
+- [ ] Efficiency measurements (inference throughput, memory) for Section 9
+- [ ] Five-seed confirmation of dice loss, or label it three-seed
+- [ ] Restore `results/step8_final.txt` (lost to a Colab disconnect)
+- [ ] Confirm a submission venue (ICATC closed 30 Aug 2026)
+- [ ] Write the paper
+- [x] **Piece 3** Balanced losses (yusri). Dice +0.0059, ~1.4 std.
+      Inverse-frequency weighting collapses precision to 0.43.
+- [x] **Piece 2** Joint sentence head (Sabith). **Null - hurts monotonically.**
+- [x] **Piece 4** Distillation (Imindu). +0.0036 net over Piece 1, inside noise.
+
+**ALL EXPERIMENTS COMPLETE.**
+
+Remaining:
+- [ ] Error analysis with real Sinhala examples
+- [ ] Efficiency measurements (inference throughput, memory) for Section 9
+- [ ] Five-seed confirmation of dice loss, or label it three-seed
+- [ ] Restore `results/step8_final.txt` (lost to a Colab disconnect)
+- [ ] Confirm a submission venue (ICATC closed 30 Aug 2026)
+- [ ] Write the paper
 
 ## Data source
 

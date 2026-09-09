@@ -1,0 +1,169 @@
+# RECOVERED TRANSCRIPT — not a fresh run
+#
+# This file is the verbatim stdout of
+#     python notebooks/08_final_model.py --both
+# run on a Colab T4 on 2026-09-05, extracted from cell 16 of the executed
+# notebook phase2_final_model_colab.ipynb. The Colab session disconnected
+# before the download cell, so the original tee'd file was lost with the
+# session; the notebook retained the output.
+#
+# Nothing has been edited except the removal of HuggingFace progress-bar
+# lines and ANSI colour codes. The executed notebook is committed alongside
+# this file as the primary artefact.
+#
+# Verification: the per-seed F1 values below re-average to the reported
+# 0.7002 +/- 0.0034 (full) and 0.7079 +/- 0.0066 (minimal).
+
+
+========================================================================
+0. SETUP
+========================================================================
+device cuda
+train 7,500 (FULL official split)   test 2,500
+No validation split. Fixed epoch budget instead of early stopping.
+tokenizer: 1,000 pieces
+word vocabulary: 33,006 (was 28,456 from train-part)
+  scanned 808,044 lines, matched 26,668 of 33,006 vocab words
+embedding matrix (33006, 300), real vectors for 80.8%
+
+frozen configuration
+  tokenizer       bpe 1000 (1,000 pieces), trained on full train
+  piece_dim       50
+  subword_dim     100
+  pooling         bilstm
+  hidden          64
+  dropout         0.5
+  lr              0.001
+  batch           32
+  crf             True
+  epochs          35 FIXED, no early stopping
+  seeds           [1, 2, 3, 4, 5]
+
+========================================================================
+1. TRAIN
+========================================================================
+
+========================================================================
+MODEL: FULL   (word + subword)
+========================================================================
+parameters:
+  total                        10,231,458
+  trainable                       329,658
+  frozen                        9,901,800
+  word_embedding                9,901,800
+  subword_channel                  90,800
+  lstm_input_dim                      400
+  non_embedding_trainable         329,658
+    epoch 10/35  loss 1.3588
+    epoch 20/35  loss 1.1181
+    epoch 30/35  loss 0.9570
+    epoch 35/35  loss 0.8842
+    seed 1  TEST  P 0.7289  R 0.6711  F1 0.6988   (830s)
+    epoch 10/35  loss 1.3525
+    epoch 20/35  loss 1.1139
+    epoch 30/35  loss 0.9506
+    epoch 35/35  loss 0.8807
+    seed 2  TEST  P 0.7068  R 0.6909  F1 0.6988   (825s)
+    epoch 10/35  loss 1.3584
+    epoch 20/35  loss 1.1196
+    epoch 30/35  loss 0.9546
+    epoch 35/35  loss 0.8881
+    seed 3  TEST  P 0.7595  R 0.6446  F1 0.6974   (821s)
+    epoch 10/35  loss 1.3561
+    epoch 20/35  loss 1.1216
+    epoch 30/35  loss 0.9491
+    epoch 35/35  loss 0.8729
+    seed 4  TEST  P 0.7015  R 0.6984  F1 0.7000   (826s)
+    epoch 10/35  loss 1.3499
+    epoch 20/35  loss 1.1320
+    epoch 30/35  loss 0.9483
+    epoch 35/35  loss 0.8871
+    seed 5  TEST  P 0.7452  R 0.6706  F1 0.7060   (844s)
+
+  TEST F1 0.7002 +/- 0.0034
+  per-seed: 0.6988, 0.6988, 0.6974, 0.7000, 0.7060
+  mean time 829s per seed
+
+========================================================================
+MODEL: MINIMAL   (SUBWORD ONLY, no pretrained resources)
+========================================================================
+parameters:
+  total                        10,077,858
+  trainable                       176,058
+  frozen                        9,901,800
+  word_embedding                9,901,800
+  subword_channel                  90,800
+  lstm_input_dim                      100
+  non_embedding_trainable         176,058
+
+  The fastText matrix is not used at all in this model. No 600 MB
+  vector file, no frozen embedding table. Fully self-contained.
+    epoch 10/35  loss 1.5535
+    epoch 20/35  loss 1.3355
+    epoch 30/35  loss 1.1961
+    epoch 35/35  loss 1.1686
+    seed 1  TEST  P 0.7458  R 0.6817  F1 0.7123   (829s)
+    epoch 10/35  loss 1.5507
+    epoch 20/35  loss 1.3227
+    epoch 30/35  loss 1.1918
+    epoch 35/35  loss 1.1612
+    seed 2  TEST  P 0.7720  R 0.6508  F1 0.7062   (831s)
+    epoch 10/35  loss 1.5598
+    epoch 20/35  loss 1.3349
+    epoch 30/35  loss 1.1995
+    epoch 35/35  loss 1.1487
+    seed 3  TEST  P 0.7518  R 0.6852  F1 0.7170   (826s)
+    epoch 10/35  loss 1.5640
+    epoch 20/35  loss 1.3502
+    epoch 30/35  loss 1.2042
+    epoch 35/35  loss 1.1760
+    seed 4  TEST  P 0.7337  R 0.6706  F1 0.7008   (820s)
+    epoch 10/35  loss 1.5682
+    epoch 20/35  loss 1.3381
+    epoch 30/35  loss 1.2089
+    epoch 35/35  loss 1.1640
+    seed 5  TEST  P 0.7099  R 0.6971  F1 0.7034   (820s)
+
+  TEST F1 0.7079 +/- 0.0066
+  per-seed: 0.7123, 0.7062, 0.7170, 0.7008, 0.7034
+  mean time 825s per seed
+
+========================================================================
+2. FINAL RESULTS
+========================================================================
+model                                    F1      std        P        R    trainable
+----------------------------------------------------------------------------------
+Published BiLSTM + CBOW              0.5800                                        
+Published BiLSTM + fastText          0.6000              0.74     0.48             
+Our Phase 1 baseline                 0.5965   0.0103   0.7452   0.4979      187,658
+Published SinBERT                    0.6200                                   ~110M
+Our word list                        0.6521            0.6361   0.6689            0
+Published XLM-T                      0.7000              0.64     0.77        ~270M
+OURS: word + subword                 0.7002   0.0034   0.7284   0.6751      329,658
+OURS: subword only (no PLM/fastText)   0.7079   0.0066   0.7426   0.6771      176,058
+Published XLM-R                      0.7200              0.68     0.76        ~560M
+Published XLM-R + TSD transfer       0.7300                                   ~560M
+
+CHANGE FROM THE PHASE 1 BASELINE
+  0.5965 -> 0.7002   (+0.1037)
+  precision 0.7452 -> 0.7284  (-0.0168)
+  recall    0.4979 -> 0.6751  (+0.1772)
+
+  The gain is recall-driven at near-constant precision. That is the mechanism
+  predicted from the measured 48.7% unseen-type rate, not a threshold shift.
+  Say this in the paper - the mechanism is what makes the number credible.
+EFFICIENCY
+  ours 329,658 trainable vs XLM-R-large ~560,000,000
+  = 1,699x fewer trainable parameters
+
+MINIMAL MODEL
+  0.7079 +/- 0.0066 with 176,058 trainable parameters
+  and NO pretrained embeddings of any kind - no fastText, no PLM.
+  = 3,181x fewer trainable parameters than XLM-R-large
+
+rows written to results/results_final.csv
+
+WRITE IT UP HONESTLY. The headline is not "we nearly match XLM-R". It is:
+a lightweight model with a subword channel reaches this F1 at a small fraction
+of the parameters, and the gain is precision-neutral and recall-driven.
+The mechanism is what makes it credible.

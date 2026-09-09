@@ -1,0 +1,31 @@
+# RECOVERED TRANSCRIPT — not a fresh run
+# Verbatim stdout (tail) of
+#     python notebooks/08_final_model.py --model full --pooling mean
+# from cell 18 of the executed notebook phase2_final_model_colab.ipynb.
+# This is the mean-pooling ablation. See step8_final.txt for provenance.
+
+Published SinBERT                    0.6200                                   ~110M
+Our word list                        0.6521            0.6361   0.6689            0
+Published XLM-T                      0.7000              0.64     0.77        ~270M
+OURS: word + subword                 0.6822   0.0092   0.7931   0.5991      293,958
+Published XLM-R                      0.7200              0.68     0.76        ~560M
+Published XLM-R + TSD transfer       0.7300                                   ~560M
+
+CHANGE FROM THE PHASE 1 BASELINE
+  0.5965 -> 0.6822   (+0.0857)
+  precision 0.7452 -> 0.7931  (+0.0479)
+  recall    0.4979 -> 0.5991  (+0.1012)
+
+  The gain is recall-driven at near-constant precision. That is the mechanism
+  predicted from the measured 48.7% unseen-type rate, not a threshold shift.
+  Say this in the paper - the mechanism is what makes the number credible.
+EFFICIENCY
+  ours 293,958 trainable vs XLM-R-large ~560,000,000
+  = 1,905x fewer trainable parameters
+
+rows written to results/results_final.csv
+
+WRITE IT UP HONESTLY. The headline is not "we nearly match XLM-R". It is:
+a lightweight model with a subword channel reaches this F1 at a small fraction
+of the parameters, and the gain is precision-neutral and recall-driven.
+The mechanism is what makes it credible.
