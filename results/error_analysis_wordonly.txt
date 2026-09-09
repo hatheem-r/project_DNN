@@ -1,0 +1,189 @@
+
+========================================================================
+0. SETUP
+========================================================================
+
+Downloading readme:   0%|          | 0.00/7.93k [00:00<?, ?B/s]
+Downloading readme: 100%|██████████| 7.93k/7.93k [00:00<00:00, 103kB/s]
+
+Downloading data:   0%|          | 0.00/4.72M [00:00<?, ?B/s]
+Downloading data: 100%|██████████| 4.72M/4.72M [00:00<00:00, 20.5MB/s]
+Downloading data: 100%|██████████| 4.72M/4.72M [00:00<00:00, 20.0MB/s]
+
+Downloading data:   0%|          | 0.00/1.60M [00:00<?, ?B/s]
+Downloading data: 100%|██████████| 1.60M/1.60M [00:00<00:00, 13.8MB/s]
+Downloading data: 100%|██████████| 1.60M/1.60M [00:00<00:00, 13.6MB/s]
+
+Generating train split:   0%|          | 0/7500 [00:00<?, ? examples/s]
+Generating train split: 100%|██████████| 7500/7500 [00:00<00:00, 42831.48 examples/s]
+Generating train split: 100%|██████████| 7500/7500 [00:00<00:00, 42005.38 examples/s]
+
+Generating test split:   0%|          | 0/2500 [00:00<?, ? examples/s]
+Generating test split: 100%|██████████| 2500/2500 [00:00<00:00, 48576.67 examples/s]
+device cuda   train 7,500   test 2,500
+checkpoint: artifacts/analysis_model_wordonly.pt
+training the tokenizer on the full train split
+model: word only (PHASE 1 BASELINE, no subword channel)
+tokenizer 1,000 pieces   vocab 33,006
+  (tokenizer NOT used - this is the no-subword baseline)
+no checkpoint; training one seed for 35 epochs (about 14 minutes on a T4)
+  epoch 10/35  loss 1.8186
+  epoch 20/35  loss 1.6691
+  epoch 30/35  loss 1.5139
+  epoch 35/35  loss 1.4667
+saved artifacts/analysis_model_wordonly.pt
+
+========================================================================
+1. PREDICTIONS ON THE TEST SPLIT
+========================================================================
+  P 0.7468   R 0.4903   F1 0.5920
+  2,268 offensive of 59,670 tokens
+
+  This is ONE seed, so it will differ slightly from the 5-seed mean
+  reported in the paper. Use the 5-seed figure for any headline claim.
+
+========================================================================
+2. ERRORS BY WORD FAMILIARITY   <-- TESTS OUR CENTRAL CLAIM
+========================================================================
+Our claim is that subwords help on words never seen in training. This
+table tests it directly: does the model still fail disproportionately on unseen
+words, or has that gap closed?
+
+bucket        tokens      TP      FP      FN        P        R       F1
+--------------------------------------------------------------------
+seen          51,819   1,099     354     901   0.7564   0.5495   0.6365
+unseen         7,851      13      23     255   0.3611   0.0485   0.0855
+
+  seen minus unseen F1: +0.5510
+
+INTERPRET CAREFULLY, AND REPORT WHICHEVER IT IS.
+  A large positive gap means subwords narrowed the unseen-word problem but did
+  not solve it. Say that; it is an honest limitation and a clear direction for
+  future work.
+  A small gap means the mechanism claim is strongly supported.
+  Either way this number belongs in Section 7.7.
+
+TO MAKE THIS COMPARISON MEANINGFUL, run the SAME breakdown on the Phase 1
+baseline, which has no subword channel:
+
+    python notebooks/10_analysis.py --errors --word-only > results/error_analysis_wordonly.txt
+
+The unseen-bucket F1 from that run is the reference point. Our unseen F1 minus
+the baseline's unseen F1 is how much the subword channel actually bought on
+unseen words - which is the number the mechanism claim rests on.
+
+========================================================================
+3. THE MOST FREQUENT INDIVIDUAL ERRORS
+========================================================================
+FALSE POSITIVES - flagged but not offensive:
+
+    30x  තෝ                       (seen)
+    16x  තොපි                     (seen)
+    15x  ගොන්                     (seen)
+     9x  තොට                      (seen)
+     7x  බඩුව                     (seen)
+     7x  නොදකින්                  (seen)
+     6x  නාකි                     (seen)
+     6x  යකෝ                      (seen)
+     6x  කාලකණ්ණි                 (seen)
+     6x  ලබ්බ                     (seen)
+     5x  බල්ලා                    (seen)
+     5x  රෙද්ද                    (seen)
+     5x  වල්                      (seen)
+     4x  අමු                      (seen)
+     4x  හරකා                     (seen)
+
+FALSE NEGATIVES - offensive but missed:
+
+    33x  රෙද්ද                    (seen)  ->  රෙද්ද
+    31x  යකෝ                      (seen)  ->  යකෝ
+    29x  තෝ                       (seen)  ->  තෝ
+    18x  නොදකින්                  (seen)  ->  නොදකින්
+    18x  කාලකණ්ණි                 (seen)  ->  කාලකණ්ණි
+    17x  කිම්බ                    (seen)  ->  කි | ම්බ
+    12x  පිස්සු                   (seen)  ->  පිස්සු
+    12x  බැල්ලි                   (seen)  ->  බැල්ලි
+    12x  පලයන්                    (seen)  ->  පලයන්
+    11x  ගොන්                     (seen)  ->  ගොන්
+    10x  බිජ්ජ                    (seen)  ->  බිජ්ජ
+    10x  තොට                      (seen)  ->  තොට
+     9x  මෝඩ                      (seen)  ->  මෝඩ
+     9x  හෙන                      (seen)  ->  හෙන
+     9x  ගොනා                     (seen)  ->  ගොනා
+
+Piece splits are shown for the misses so you can check whether a missed word
+decomposed into a root the model should have recognised. If it did and the model
+still missed it, the failure is contextual rather than lexical - which is a
+different and more interesting kind of error.
+
+========================================================================
+4. EXAMPLE TWEETS FOR SECTION 7.7
+========================================================================
+Legend:  [word] correct hit   <word> false positive   {word} missed
+
+--- PERFECT ---
+  #20  sentence label = OFF
+    [යකෝ] [හුජ්ජ] පාරක් නිදහසේවත් දාන්න තැනක් නෑනේ ෂිට් හැමතැනම CCTV කැමරා ෆක් : 3 — feeling crazy
+  #28  sentence label = OFF
+    Come hangout with me > හේමන්තයි එයගේ ඝනිකව අනූයී යක්ශනීවේසියි මගේ [පක] බලන් ඇගිල්ල ගහනවා on # BIGOLIVE URL
+  #36  sentence label = OFF
+    @USER @USER [බිජ්ජ] කපන්න හිතිල ඉන්නෙ ජයේ
+  #43  sentence label = OFF
+    විය යුතු දේවල් මේව තමයි නිදහස් අධ්‍යාපනයෙන් ඉගෙනගෙ ඉහලට ඇවිත් තවත් ඒවගේ දුක් විදල ඉගෙනගන්න එන එකෙකුට වද දෙනව. . . . . මොක්කු හැදුවද දන්නෙනෑ නවක වදේ කියල මේවගේ [අවජාතක] සස්කෘති . . . .
+  #48  sentence label = OFF
+    ඕනම කෙනෙකුට ඕනවට වඩා [පුක] දෙන්න එපා. ( ලෙඩක් හැදිච්ච ගමන් ගිහිං ෆාමසි වලිං බෙහෙත් අරං දෙනවා වගේ දේවල් ) Λ ｎｊａｎａ @USER 31 Mar 2021 මාර්තු මාසෙන් ඉගන ගත්ත පාඩම
+  #85  sentence label = OFF
+    මිනිමරුවාව සභාපති කරල , කුණුහරප කියපු පොඩි කොල්ලන්ව හිරේ දැම්මා . රුසියාවේ පුටිං දන්නව නම් , ඌට සමාන කලා කියල [පුක] හපාගෙන මැරෙන්නේ .
+
+--- OVER-FLAGGED ---
+  #4  sentence label = OFF
+    @USER ගොසිප් පීපල් නෙමේ [හුත්තො] . [තෝ] වගේ <හොරෙක්ට> මේකෙ ආයෙ දඩයං හොයන්න දෙන්නෑ . එච්චරයි
+  #15  sentence label = NOT
+    එම්බල පුරෝහිත <තොට> <අමු> <කැවිලද> . ?
+  #21  sentence label = OFF
+    @USER මම නෙවේ කැපුවෙ වස්තුවේ . . සැලොන් එකේ [මෝඩ] <ගෑණි> . ආයෙ වැවෙයි .
+  #47  sentence label = OFF
+    ඇයි උඹ අලි <පු> * න්ද ? # SriLankanThreats
+  #53  sentence label = NOT
+    නොදකින් කකුලා <හරකා> <ඌරා> ගැන මේකේ ඉන්න කෙල්ලන්ට මාර අමාරුවක්නෙ තියෙන්නේ . කටේ දාලා සූප්පු කරද්දී හොදයි <තොපිට> .
+  #102  sentence label = OFF
+    @USER [පට්ට] [ගොන්] <ඩිසයින්> එකක්නේ
+
+--- UNDER-FLAGGED ---
+  #12  sentence label = OFF
+    මෙහෙවු කැබිනට් එකක මං ඉදලම නෑ . . කැබිනට් ප්‍රකාශක {පිස්සු} {කෙලින්නේ} . . ආණ්ඩුව ගිවිසුම සැප්තැම්බරයේ ඉවරයි . . එතකොට URL
+  #29  sentence label = OFF
+    * කාරුණික සිහිගැන්වීමකි * හෙළයිනි , අභූත ප්‍රභූත්වයක් ආරූඩ කරගත් දෙසිය විසිපහේ {අජූත} {භූත} රැල ඔබගෙ ගෙමිදුලට වද්දා ගැනීමෙන් වළකින්න ! කිසිදා නොපිපෙන කුණු පොහොට්ටු රොත්තද එක්සත් විජාතික පක්ෂයේ බෙලහීනයන්ද කාල් මාක්ස්ගේ [අවජාතක] මන්ද දරුවන් ටිකද අන් සියළු දේශපාලුවන්ද මින් අදහස් වේ . # lka
+  #40  sentence label = OFF
+    @USER @USER {අඩො} {ගෙම්බා} එක්ක සජියට බයින්න එපා හරිය
+  #41  sentence label = OFF
+    @USER @USER වීරයයි ගෑනි රැවුලෙන් අල්ලං . . . " තමුසෙ කොහෙද යන්නෙ . . . මෙන්නෙ මෙහෙ ඉන්නව {හොම්බ} {තලාගන්නැතිව} " කියයි කියල
+  #52  sentence label = OFF
+    [කාලකන්නි] [හුත්තෝ] මහ බැංකුව [තොපි] මොනාද දන්නේ බිට් කොයින් ගැන හෙන සෙට් එකක් ඉන්නවා හැම දවසම $ ලංකාවට ගෙන තොට මොනවා හරි දැන ගන්න ඕනේ නම් zoom එකෙන් මට කතා කරපිය {හුකන්නෝ}
+  #56  sentence label = OFF
+    @USER මහින්ද ගේ {මෝඩ} {මුසලයා} නේද ?
+
+--- MIXED ---
+  #13  sentence label = OFF
+    දේශපාලුවෝ බහුතරය පූජකයන්ට කැමතියි , මොකද ඕන {ගොන්} වැඩකට සාදු / හලලුයා කියන්න , [ගොන්] කතාවක් අහගෙන එකට වැදගෙන ඉන්න <අමන> ජනයට පුරදු පුහුණු කරන්නේ එව්වා සාමාන්‍ය දේවල් කරන්නේ පූජකයෝ නිසා . .
+  #14  sentence label = OFF
+    @USER මේ <කාලකන්නි> <දේශපාලඥයන්ගේ> <අමන> ප්‍රකාශ නිසා තවදුරටත් සිද්ධවෙන්නේ සාමාන්‍ය මුස්ලිම් මිනිස්සුන්ව අනිත් මිනිස්සු විසින් තවදුරටත් පිළිකුල් කිරීම කරුණාකරලා අනවශ්‍ය දේවල් ප්‍රකාශ කරලා ජනතාව කුපිත කරන්නැතුව ඉන්නවා හිටපං {පකයෝ} {පකයො}
+  #37  sentence label = OFF
+    වැදගත් වඩකට ගෑනියෙක් කෝල් කලත් ඔව් මිස් , හරි මිස් , ඕකෙ මිස් , කියවෙනෝ ඔපිස් පුරුද්දට . . {නොදකින්} මෙ <නාකි> <ඔපීසිය>
+  #46  sentence label = OFF
+    @USER @USER 10 others [තෝ] {පට්ට} {වෙස්සි} {තම්බින්ට} රෙද්ද උස්සන හින්දා වෙන්න ඇතිනේ [තොට] මෙච්චර <රිදෙන්නේ> , [තෝ] වගේ [කැහි] [වේස] [හුකන] {බල්ලියෝන්} ගේ පව්ල් පිටින් {තොත්} එක්කව කුඩු වෙලා යන්න ඕනේ [පර] [වෙසිගේ] දුව. . . රටේ ජාතියේ කරුමේට ඉපදුන [කාලකන්නි] [වෙස] [හැතිකරේ] , [තොගේ] [කැහි] [හුත්ත] කුණු වෙලා වන වෙලා යන්න ඕනේ , [පර] [බැල්ලි]
+  #90  sentence label = OFF
+    නාකි {බල්ලෝ} හඳට උඩු බුර බුරා යන ගමන් තැන තැන [හුජ්ජ] <ගහනකොට> නේ ආයිබොවන්ඩ අපිට වුණත් දත කට පූට්ටු කරන් ඉන්ඩ හිතෙන්නැත්තෙ .
+  #135  sentence label = OFF
+    ලැප් එකේ ස්ටිකර් ගහන උන් නම් <ඊයා> [ඕකුන්] තමයි කවදහරි කාර් එකක් ගත්ත දවසට කාර් එක පුරාම ස්ටිකර් ගහන්නෙ . Don ' t touch my Car කියල {පුපට} තඩි බාන ඒව
+
+NEXT STEP, AND IT NEEDS A HUMAN.
+
+Pick five to eight examples above and write Section 7.7. For each, say WHY the
+model behaved as it did: an unseen inflection of a known root, offence carried by
+context rather than any single word, sarcasm, or a plausible annotation
+disagreement. That judgement requires reading Sinhala and cannot be automated.
+
+Reviewers consistently reward this section and almost no student paper has one.
+
+raw predictions saved to results/error_analysis_raw_wordonly.json
