@@ -137,7 +137,7 @@ class SubwordEncoder(nn.Module):
 class BiLSTMTagger(nn.Module):
     def __init__(
         self,
-        embedding_matrix: np.ndarray,
+        embedding_matrix: Optional[np.ndarray],
         hidden_size: int = 64,
         num_layers: int = 1,
         dropout: float = 0.5,
@@ -156,15 +156,24 @@ class BiLSTMTagger(nn.Module):
         token_loss=None,
     ):
         super().__init__()
-        vocab_size, dim = embedding_matrix.shape
-
         if not use_word_channel and n_pieces == 0:
             raise ValueError("Cannot disable the word channel with no subword channel.")
+        if embedding_matrix is None and use_word_channel:
+            raise ValueError("The word channel needs an embedding_matrix.")
 
         self.use_word_channel = use_word_channel
-        self.embedding = nn.Embedding(vocab_size, dim, padding_idx=PAD_ID)
-        self.embedding.weight.data.copy_(torch.from_numpy(embedding_matrix))
-        self.embedding.weight.requires_grad = not freeze_embeddings
+        # Pass embedding_matrix=None with use_word_channel=False to build a model
+        # with no embedding table at all, so no fastText file is needed to build,
+        # save or load it. Passing a matrix with the word channel off still builds
+        # the unused table: that keeps the random-number sequence, and therefore
+        # every per-seed result reported from earlier runs, reproducible.
+        self.embedding = None
+        dim = 0
+        if embedding_matrix is not None:
+            vocab_size, dim = embedding_matrix.shape
+            self.embedding = nn.Embedding(vocab_size, dim, padding_idx=PAD_ID)
+            self.embedding.weight.data.copy_(torch.from_numpy(embedding_matrix))
+            self.embedding.weight.requires_grad = not freeze_embeddings
 
         # The two channels are CONCATENATED, not swapped. For the 80.8% of words
         # with a real fastText vector the word channel already works; for the
@@ -328,16 +337,16 @@ class BiLSTMTagger(nn.Module):
         total = sum(p.numel() for p in self.parameters())
         trainable = sum(p.numel() for p in self.parameters() if p.requires_grad)
         sub = sum(p.numel() for p in self.subword.parameters()) if self.subword else 0
+        emb = self.embedding.weight.numel() if self.embedding is not None else 0
+        emb_trainable = emb if emb and self.embedding.weight.requires_grad else 0
         return {
             "total": total,
             "trainable": trainable,
             "frozen": total - trainable,
-            "word_embedding": self.embedding.weight.numel(),
+            "word_embedding": emb,
             "subword_channel": sub,
             "sentence_head": sum(p.numel() for p in self.sentence_head.parameters())
                               if self.sentence_head is not None else 0,
             "lstm_input_dim": self.lstm_input_dim,
-            "non_embedding_trainable": trainable - (
-                self.embedding.weight.numel() if self.embedding.weight.requires_grad else 0
-            ),
+            "non_embedding_trainable": trainable - emb_trainable,
         }

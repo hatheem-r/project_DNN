@@ -59,10 +59,16 @@ ap.add_argument("--word-only", action="store_true",
                      "what makes the Section 7.7 comparison meaningful.")
 ap.add_argument("--examples", type=int, default=24)
 ap.add_argument("--epochs", type=int, default=EPOCHS)
+ap.add_argument("--threads", type=int, default=0,
+                help="limit PyTorch to this many CPU threads (0 = PyTorch default)")
+ap.add_argument("--latency-tweets", type=int, default=500,
+                help="tweets timed one at a time for the batch-1 latency figure")
 args = ap.parse_args()
 if not (args.errors or args.efficiency):
     print("Pass --errors or --efficiency")
     sys.exit(1)
+if args.threads:
+    torch.set_num_threads(args.threads)
 
 
 # ==========================================================================
@@ -90,11 +96,17 @@ if not os.path.exists(SP_PREFIX + ".model"):
 sp = load_sentencepiece(SP_PREFIX + ".model")
 
 vocab, _ = build_vocab(train_full["token_list"], min_freq=1)
-if not os.path.exists(VEC):
-    print(f"\nMISSING {VEC}. See notebooks/03_embeddings.py for the download.")
-    sys.exit(1)
-vectors, dim = load_vectors_for_vocab(VEC, vocab, verbose=False)
-matrix, _ = build_embedding_matrix(vocab, vectors, dim)
+if args.minimal:
+    # The subword-only model has no word channel, so it is built without an
+    # embedding table and the fastText file is never opened.
+    matrix = None
+    print("fastText vectors NOT loaded - the subword-only model has no word channel")
+else:
+    if not os.path.exists(VEC):
+        print(f"\nMISSING {VEC}. See notebooks/03_embeddings.py for the download.")
+        sys.exit(1)
+    vectors, dim = load_vectors_for_vocab(VEC, vocab, verbose=False)
+    matrix, _ = build_embedding_matrix(vocab, vectors, dim)
 SP_ARG = None if args.word_only else sp
 print(f"model: {_names[variant]}")
 print(f"tokenizer {sp.get_piece_size():,} pieces   vocab {len(vocab):,}")
@@ -117,7 +129,11 @@ def get_model():
     """Load the saved checkpoint, or train one and save it."""
     model = build().to(device)
     if os.path.exists(CKPT):
-        model.load_state_dict(torch.load(CKPT, map_location=device))
+        state = torch.load(CKPT, map_location=device)
+        if model.embedding is None:
+            # a checkpoint saved before the table was removed still carries it
+            state.pop("embedding.weight", None)
+        model.load_state_dict(state)
         print(f"loaded {CKPT}")
         return model
 
@@ -346,13 +362,78 @@ inference over the full test split, measured on {device}:
   tweets per second      {n_tweet / el:,.0f}
   tokens per second      {n_tok / el:,.0f}
   ms per tweet           {el / n_tweet * 1000:.3f}""")
+    peak_gpu = None
     if device.type == "cuda":
-        print(f"  peak GPU memory        {torch.cuda.max_memory_allocated() / 1e6:.1f} MB")
+        peak_gpu = torch.cuda.max_memory_allocated() / 1e6
+        print(f"  peak GPU memory        {peak_gpu:.1f} MB")
+
+    # Batch-1 latency: one tweet at a time, the way an app moderating posts as
+    # they arrive would run it. Throughput above is batched and flatters this.
+    n_lat = min(args.latency_tweets, len(test))
+    lat_ms = []
+    if n_lat:
+        single = list(make_loader(test.iloc[:n_lat], vocab, 1, shuffle=False, sp=SP_ARG))
+        with torch.no_grad():
+            for k, (ids, _, mask, lens, _, pid, plen) in enumerate(single):
+                ids, mask = ids.to(device), mask.to(device)
+                if pid is not None:
+                    pid, plen = pid.to(device), plen.to(device)
+                if device.type == "cuda":
+                    torch.cuda.synchronize()
+                t1 = time.perf_counter()
+                model.predict(ids, mask, lens, pid, plen)
+                if device.type == "cuda":
+                    torch.cuda.synchronize()
+                if k >= 5:                       # first few are warm-up
+                    lat_ms.append((time.perf_counter() - t1) * 1000)
+        lat_ms.sort()
+        print(f"""
+batch-1 latency, {len(lat_ms)} tweets timed one at a time:
+  median ms per tweet    {lat_ms[len(lat_ms) // 2]:.3f}
+  95th percentile ms     {lat_ms[int(len(lat_ms) * 0.95)]:.3f}""")
+
+    # Size on disk, measured by saving it, not estimated from a parameter count.
+    probe = "artifacts/_size_probe.pt"
+    torch.save(model.state_dict(), probe)
+    model_mb = os.path.getsize(probe) / 1e6
+    os.remove(probe)
+    sp_mb = os.path.getsize(SP_PREFIX + ".model") / 1e6 if SP_ARG is not None else 0.0
+
+    peak_ram = None
+    try:
+        import resource                          # Linux; ru_maxrss is in KB
+        peak_ram = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1e3
+    except ImportError:
+        pass
 
     print(f"""
-  model size at float32  ~{p['total'] * 4 / 1e6:.1f} MB
-  external files needed  {'none' if args.minimal else 'cc.si.300.vec.gz (460 MB)'}
+hardware and settings:
+  device                 {device}
+  CPU threads used       {torch.get_num_threads()}  (of {os.cpu_count()} available)
+  batch size             {BATCH} for throughput, 1 for latency
+  torch                  {torch.__version__}
 
+size and dependencies (measured):
+  word-embedding table   {'none' if model.embedding is None else f"{p['word_embedding']:,} params"}
+  model file on disk     {model_mb:.2f} MB
+  tokenizer file         {sp_mb:.2f} MB
+  external files needed  {'none' if model.embedding is None else 'cc.si.300.vec.gz (460 MB) to build the model'}
+  peak process RAM       {f'{peak_ram:.0f} MB (whole Python process: libraries, data and model)' if peak_ram else 'not available on this OS'}
+""")
+
+    out = {"variant": variant, "device": str(device), "threads": torch.get_num_threads(),
+           "parameters": p, "batch": BATCH, "tweets": n_tweet,
+           "tweets_per_s": round(n_tweet / el, 1), "ms_per_tweet_batched": round(el / n_tweet * 1000, 3),
+           "latency_ms_median": round(lat_ms[len(lat_ms) // 2], 3) if lat_ms else None,
+           "latency_ms_p95": round(lat_ms[int(len(lat_ms) * 0.95)], 3) if lat_ms else None,
+           "model_file_mb": round(model_mb, 3), "tokenizer_file_mb": round(sp_mb, 3),
+           "peak_gpu_mb": round(peak_gpu, 1) if peak_gpu else None,
+           "peak_process_ram_mb": round(peak_ram) if peak_ram else None}
+    tag = f"{variant}_{device.type}_t{torch.get_num_threads()}"
+    with open(f"results/efficiency_{tag}.json", "w") as fh:
+        json.dump(out, fh, indent=2)
+    print(f"saved results/efficiency_{tag}.json")
+    print(f"""
 FOR THE PAPER.
 Report these as MEASURED and state the hardware and batch size ({BATCH}).
 Published transformer figures should be cited as parameter counts only, unless

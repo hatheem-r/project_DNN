@@ -18,6 +18,11 @@ Run:
     python notebooks/11_transformer_efficiency.py --model xlmr-base
     python notebooks/11_transformer_efficiency.py --model xlmr-large
     python notebooks/11_transformer_efficiency.py --all      # all four in one run
+
+On CPU, time a sample rather than all 2,500 tweets - XLM-R-large over the full
+split takes tens of minutes. Tweets per second is the comparable figure:
+    CUDA_VISIBLE_DEVICES="" python notebooks/11_transformer_efficiency.py \\
+        --all --allow-cpu --limit 250 --threads 1
 """
 import sys, os, time, argparse, json
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -47,7 +52,7 @@ def get_device():
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def bench_one(name, hf_id, test_texts, device):
+def bench_one(name, hf_id, test_texts, device, latency_tweets=0):
     rule(f"{name}  ({hf_id})")
 
     t0 = time.time()
@@ -82,7 +87,11 @@ def bench_one(name, hf_id, test_texts, device):
                 n_tweet += enc["input_ids"].size(0)
         return n_tok, n_tweet
 
-    run_all()  # warm up
+    if device.type == "cuda":
+        run_all()  # warm up
+    else:
+        with torch.no_grad():  # one batch is enough to warm up on CPU
+            model(**{k: v.to(device) for k, v in batches[0].items()})
     if device.type == "cuda":
         torch.cuda.synchronize()
         torch.cuda.reset_peak_memory_stats()
@@ -105,6 +114,25 @@ def bench_one(name, hf_id, test_texts, device):
     if device.type == "cuda":
         result["peak_memory_mb"] = round(torch.cuda.max_memory_allocated() / 1e6, 1)
 
+    # Batch-1 latency, matching notebooks/10_analysis.py --efficiency.
+    if latency_tweets:
+        lat_ms = []
+        with torch.no_grad():
+            for k, text in enumerate(test_texts[:latency_tweets + 3]):
+                enc = tok([text], return_tensors="pt", truncation=True, max_length=MAX_LEN)
+                enc = {kk: v.to(device) for kk, v in enc.items()}
+                if device.type == "cuda":
+                    torch.cuda.synchronize()
+                t1 = time.perf_counter()
+                model(**enc)
+                if device.type == "cuda":
+                    torch.cuda.synchronize()
+                if k >= 3:                       # first few are warm-up
+                    lat_ms.append((time.perf_counter() - t1) * 1000)
+        lat_ms.sort()
+        result["latency_ms_median"] = round(lat_ms[len(lat_ms) // 2], 3)
+        result["latency_ms_p95"] = round(lat_ms[int(len(lat_ms) * 0.95)], 3)
+
     print(f"\n  inference over {n_tweet:,} tweets, batch {BATCH}, max_len {MAX_LEN}:")
     print(f"    wall clock       {result['wall_clock_s']}s")
     print(f"    tweets/s         {result['tweets_per_s']:,}")
@@ -112,6 +140,9 @@ def bench_one(name, hf_id, test_texts, device):
     print(f"    ms/tweet         {result['ms_per_tweet']}")
     if "peak_memory_mb" in result:
         print(f"    peak GPU memory  {result['peak_memory_mb']} MB")
+    if "latency_ms_median" in result:
+        print(f"    batch-1 latency  median {result['latency_ms_median']} ms, "
+              f"95th pct {result['latency_ms_p95']} ms")
 
     del model
     if device.type == "cuda":
@@ -122,48 +153,69 @@ def bench_one(name, hf_id, test_texts, device):
 ap = argparse.ArgumentParser()
 ap.add_argument("--model", choices=list(MODELS), help="one model")
 ap.add_argument("--all", action="store_true", help="run all four")
+ap.add_argument("--allow-cpu", action="store_true",
+                help="run on CPU instead of refusing; pair with --limit")
+ap.add_argument("--limit", type=int, default=0,
+                help="time only the first N test tweets (0 = all 2,500)")
+ap.add_argument("--threads", type=int, default=0,
+                help="limit PyTorch to this many CPU threads (0 = PyTorch default)")
+ap.add_argument("--latency-tweets", type=int, default=0,
+                help="also time this many tweets one at a time (batch-1 latency)")
 args = ap.parse_args()
 if not (args.model or args.all):
     print("Pass --model <name> or --all. Names:", list(MODELS)); sys.exit(1)
+if args.threads:
+    torch.set_num_threads(args.threads)
 
 rule("SETUP")
 device = get_device()
-print(f"device: {device}")
-if device.type != "cuda":
+print(f"device: {device}   CPU threads used: {torch.get_num_threads()} "
+      f"(of {os.cpu_count()} available)")
+if device.type != "cuda" and not args.allow_cpu:
     print("\nWARNING: no GPU detected. Runtime -> Change runtime type -> T4 GPU.")
-    print("Transformers on CPU are extremely slow; do not run this on CPU.")
+    print("To time on CPU deliberately, pass --allow-cpu with --limit (e.g. 250).")
     sys.exit(1)
+if device.type != "cuda" and not args.limit:
+    print("\nWARNING: timing all 2,500 tweets on CPU. XLM-R-large alone may take")
+    print("tens of minutes. Consider --limit 250.")
 
 test = load_sold("test")
 test_texts = [" ".join(t) for t in test["token_list"]]
-print(f"test tweets: {len(test_texts):,}")
+if args.limit:
+    test_texts = test_texts[:args.limit]
+print(f"test tweets timed: {len(test_texts):,}")
 
 todo = list(MODELS.items()) if args.all else [(args.model, MODELS[args.model])]
 results = []
 for name, hf_id in todo:
     try:
-        results.append(bench_one(name, hf_id, test_texts, device))
+        results.append(bench_one(name, hf_id, test_texts, device, args.latency_tweets))
     except Exception as e:
         print(f"\n  FAILED to benchmark {name}: {e}")
         print("  Report this error to the group rather than skipping silently -")
         print("  it may mean the model needs a different loading class.")
 
 rule("SUMMARY - FOR SECTION 9")
-print(f"{'model':<12} {'params':>14} {'MB':>8} {'tweets/s':>10} {'ms/tweet':>10} {'peak MB':>9}")
-print("-" * 68)
+print(f"device {device}, {torch.get_num_threads()} CPU threads, "
+      f"{len(test_texts):,} tweets, batch {BATCH}")
+print(f"{'model':<12} {'params':>14} {'MB':>8} {'tweets/s':>10} {'ms/tweet':>10} "
+      f"{'b1 ms':>8} {'peak MB':>9}")
+print("-" * 78)
 for r in results:
     print(f"{r['model']:<12} {r['parameters']:>14,} {r['size_mb']:>8.1f} "
           f"{r['tweets_per_s']:>10,} {r['ms_per_tweet']:>10.3f} "
-          f"{r.get('peak_memory_mb','-'):>9}")
+          f"{r.get('latency_ms_median', '-'):>8} {r.get('peak_memory_mb', '-'):>9}")
 
-print(f"""
-Our model, for comparison (from results/efficiency.txt):
-  ours (subword only)     176,058 params      0.7 MB   968 tw/s (CPU) / 1,261 tw/s (T4)   0.793 ms/tweet (T4)
-  ours (word + subword)   329,658 params     40.9 MB    (same throughput; params are frozen-embedding overhead only)
+print("""
+Compare against results/efficiency_minimal_<device>_t<threads>.json from
+notebooks/10_analysis.py --efficiency --minimal, run on the same hardware with
+the same thread setting. Compare tweets/s and batch-1 ms, not tokens/s: these
+models count their own subword tokens, ours counts words.
 """)
 
 os.makedirs("results", exist_ok=True)
-with open("results/transformer_efficiency.json", "w") as fh:
+tag = f"{device.type}_t{torch.get_num_threads()}" + (f"_n{args.limit}" if args.limit else "")
+with open(f"results/transformer_efficiency_{tag}.json", "w") as fh:
     json.dump(results, fh, indent=2)
-print("saved results/transformer_efficiency.json")
+print(f"saved results/transformer_efficiency_{tag}.json")
 print("\nAlso commit the printed summary table above (redirect stdout to a .txt file).")
