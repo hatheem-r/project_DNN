@@ -1,0 +1,53 @@
+
+========================================================================
+0. SETUP
+========================================================================
+device cuda   mode FINAL (scores test)
+seeds [1, 2, 3, 4, 5]   batch 32   crf True   epochs<=60 patience 12
+
+row-level results append to: results/results_extra_baselines.csv
+this readable report goes to stdout - redirect it to results/
+
+train-part 6,000  val 1,500  test 2,500
+vocab 28,456   embedding matrix (28456, 300)
+
+========================================================================
+1. FINAL RUN - none
+========================================================================
+Frozen Phase 1 settings (batch 32, CRF on) so the number is directly
+comparable to the baseline 0.5965.
+
+--- none  (0 pieces)  encoder bilstm  
+    tag: bilstm_word_only
+    trainable 187,658  (subword channel 0, lstm input 300)
+    seed 1  val F1 0.6023   TEST F1 0.6052   (699s, 42 epochs)
+    seed 2  val F1 0.5959   TEST F1 0.6006   (877s, 55 epochs)
+    seed 3  val F1 0.6062   TEST F1 0.6052   (767s, 44 epochs)
+    seed 4  val F1 0.6095   TEST F1 0.6017   (1071s, 60 epochs)
+    seed 5  val F1 0.6011   TEST F1 0.5931   (1046s, 58 epochs)
+    VAL  F1 0.6030 +/- 0.0052   (892s/seed)
+    TEST F1 0.6012 +/- 0.0050   P 0.7150  R 0.5190
+
+========================================================================
+2. RESULT
+========================================================================
+
+  Phase 1 baseline (word only)  0.5965 +/- 0.0103
+  + subword channel             0.6012 +/- 0.0050
+  change                        +0.0047
+
+  our word list                 0.6521   <- still the floor to beat
+  published XLM-R               0.7200
+
+  precision 0.7150   recall 0.5190
+  Phase 1 was precision 0.7452, recall 0.4979.
+
+  NO MEASURABLE EFFECT. +0.0047 is inside the noise (0.0103).
+  Report it as such. A careful null result on a low-resource
+  language is a legitimate finding, and hiding it is not an option.
+
+  ABLATION ROWS STILL OWED
+    --pooling mean            does piece ORDER matter?
+    --no-word-channel         is fastText still needed?
+  Both at 5 seeds, same settings.
+
