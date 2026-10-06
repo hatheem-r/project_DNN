@@ -110,6 +110,9 @@ def bench_one(name, hf_id, test_texts, device, latency_tweets=0):
         "tweets_per_s": round(n_tweet / el, 1),
         "tokens_per_s": round(n_tok / el, 1),
         "ms_per_tweet": round(el / n_tweet * 1000, 3),
+        "tweets": n_tweet,
+        "throughput_tweets": f"test[0:{n_tweet}]",
+        "mean_tokens_per_tweet": round(n_tok / n_tweet, 1),
     }
     if device.type == "cuda":
         result["peak_memory_mb"] = round(torch.cuda.max_memory_allocated() / 1e6, 1)
@@ -132,11 +135,13 @@ def bench_one(name, hf_id, test_texts, device, latency_tweets=0):
         lat_ms.sort()
         result["latency_ms_median"] = round(lat_ms[len(lat_ms) // 2], 3)
         result["latency_ms_p95"] = round(lat_ms[int(len(lat_ms) * 0.95)], 3)
+        result["latency_tweets"] = f"test[3:{3 + len(lat_ms)}]"
 
     print(f"\n  inference over {n_tweet:,} tweets, batch {BATCH}, max_len {MAX_LEN}:")
     print(f"    wall clock       {result['wall_clock_s']}s")
     print(f"    tweets/s         {result['tweets_per_s']:,}")
     print(f"    tokens/s         {result['tokens_per_s']:,}")
+    print(f"    tokens/tweet     {result['mean_tokens_per_tweet']}")
     print(f"    ms/tweet         {result['ms_per_tweet']}")
     if "peak_memory_mb" in result:
         print(f"    peak GPU memory  {result['peak_memory_mb']} MB")

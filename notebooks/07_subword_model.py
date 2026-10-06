@@ -44,7 +44,7 @@ import numpy as np
 import torch
 
 from data import load_sold, train_val_split
-from embeddings import build_vocab
+from embeddings import build_vocab, extend_vocab
 from dataset import make_loader
 from model import BiLSTMTagger
 from subword import load_sentencepiece, CharTokenizer
@@ -80,6 +80,11 @@ p.add_argument("--sp", type=str, default=None,
                     "'none' for no subword channel (word level only)")
 p.add_argument("--encoder", type=str, default="bilstm", choices=["bilstm", "transformer"],
                help="sentence-level encoder; transformer is trained from scratch")
+p.add_argument("--matrix", type=str, default=MATRIX,
+               help="word embedding matrix (default: the fastText .vec matrix)")
+p.add_argument("--open-vocab", action="store_true",
+               help="add validation and test words to the vocabulary; use with a "
+                    "matrix from notebooks/12_fasttext_oov.py")
 p.add_argument("--csv", type=str, default=None,
                help="results file to append to (default results/results_phase2.csv)")
 p.add_argument("--pooling", type=str, default="bilstm", choices=["bilstm", "mean"])
@@ -133,13 +138,17 @@ train_full = load_sold("train")
 test = load_sold("test")
 train_part, val = train_val_split(train_full)
 vocab, _ = build_vocab(train_part["token_list"], min_freq=1)
-matrix = np.load(MATRIX)
+if args.open_vocab:
+    vocab = extend_vocab(vocab, [*val["token_list"], *test["token_list"]])
+matrix = np.load(args.matrix)
+print(f"embedding matrix: {args.matrix}" + ("   (open vocabulary)" if args.open_vocab else ""))
 print(f"\nrow-level results append to: {RESULTS_CSV}")
 print("this readable report goes to stdout - redirect it to results/")
 print(f"\ntrain-part {len(train_part):,}  val {len(val):,}  test {len(test):,}")
 print(f"vocab {len(vocab):,}   embedding matrix {matrix.shape}")
 if matrix.shape[0] != len(vocab):
-    print("MISMATCH between matrix rows and vocab. Re-run notebooks/03_embeddings.py.")
+    print("MISMATCH between matrix rows and vocab. Re-run notebooks/03_embeddings.py"
+          " (or notebooks/12_fasttext_oov.py for --open-vocab).")
     sys.exit(1)
 
 
@@ -185,6 +194,10 @@ def make_tag(sp_name):
     parts = ["sweep" if args.sweep else "final", sp_name, args.pooling]
     if args.encoder != "bilstm":
         parts.append(args.encoder)
+    if args.matrix != MATRIX:
+        parts.append(os.path.splitext(os.path.basename(args.matrix))[0])
+    if args.open_vocab:
+        parts.append("openvocab")
     if args.subword_dim != 100:
         parts.append(f"sd{args.subword_dim}")
     if args.piece_dim != 50:

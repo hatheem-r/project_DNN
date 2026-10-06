@@ -63,6 +63,8 @@ ap.add_argument("--threads", type=int, default=0,
                 help="limit PyTorch to this many CPU threads (0 = PyTorch default)")
 ap.add_argument("--latency-tweets", type=int, default=500,
                 help="tweets timed one at a time for the batch-1 latency figure")
+ap.add_argument("--limit", type=int, default=0,
+                help="time throughput on the first N test tweets (0 = all 2,500)")
 args = ap.parse_args()
 if not (args.errors or args.efficiency):
     print("Pass --errors or --efficiency")
@@ -326,7 +328,8 @@ if args.efficiency:
     for k, v in p.items():
         print(f"  {k:<26} {v:>14,}")
 
-    loader = make_loader(test, vocab, BATCH, shuffle=False, sp=SP_ARG)
+    timed = test.iloc[:args.limit] if args.limit else test
+    loader = make_loader(timed, vocab, BATCH, shuffle=False, sp=SP_ARG)
     batches = list(loader)
 
     def run_all():
@@ -355,7 +358,7 @@ if args.efficiency:
     el = time.time() - t0
 
     print(f"""
-inference over the full test split, measured on {device}:
+inference over test[0:{n_tweet}], measured on {device}:
   tweets                 {n_tweet:,}
   real tokens            {n_tok:,}
   wall clock             {el:.2f}s
@@ -369,10 +372,12 @@ inference over the full test split, measured on {device}:
 
     # Batch-1 latency: one tweet at a time, the way an app moderating posts as
     # they arrive would run it. Throughput above is batched and flatters this.
-    n_lat = min(args.latency_tweets, len(test))
+    # The first 3 tweets are warm-up and the next n_lat are timed, the same
+    # tweets notebooks/11_transformer_efficiency.py times.
+    n_lat = min(args.latency_tweets, len(test) - 3)
     lat_ms = []
     if n_lat:
-        single = list(make_loader(test.iloc[:n_lat], vocab, 1, shuffle=False, sp=SP_ARG))
+        single = list(make_loader(test.iloc[:n_lat + 3], vocab, 1, shuffle=False, sp=SP_ARG))
         with torch.no_grad():
             for k, (ids, _, mask, lens, _, pid, plen) in enumerate(single):
                 ids, mask = ids.to(device), mask.to(device)
@@ -384,11 +389,11 @@ inference over the full test split, measured on {device}:
                 model.predict(ids, mask, lens, pid, plen)
                 if device.type == "cuda":
                     torch.cuda.synchronize()
-                if k >= 5:                       # first few are warm-up
+                if k >= 3:                       # first few are warm-up
                     lat_ms.append((time.perf_counter() - t1) * 1000)
         lat_ms.sort()
         print(f"""
-batch-1 latency, {len(lat_ms)} tweets timed one at a time:
+batch-1 latency, test[3:{3 + len(lat_ms)}] timed one at a time:
   median ms per tweet    {lat_ms[len(lat_ms) // 2]:.3f}
   95th percentile ms     {lat_ms[int(len(lat_ms) * 0.95)]:.3f}""")
 
@@ -423,13 +428,15 @@ size and dependencies (measured):
 
     out = {"variant": variant, "device": str(device), "threads": torch.get_num_threads(),
            "parameters": p, "batch": BATCH, "tweets": n_tweet,
+           "throughput_tweets": f"test[0:{n_tweet}]",
+           "latency_tweets": f"test[3:{3 + len(lat_ms)}]" if lat_ms else None,
            "tweets_per_s": round(n_tweet / el, 1), "ms_per_tweet_batched": round(el / n_tweet * 1000, 3),
            "latency_ms_median": round(lat_ms[len(lat_ms) // 2], 3) if lat_ms else None,
            "latency_ms_p95": round(lat_ms[int(len(lat_ms) * 0.95)], 3) if lat_ms else None,
            "model_file_mb": round(model_mb, 3), "tokenizer_file_mb": round(sp_mb, 3),
            "peak_gpu_mb": round(peak_gpu, 1) if peak_gpu else None,
            "peak_process_ram_mb": round(peak_ram) if peak_ram else None}
-    tag = f"{variant}_{device.type}_t{torch.get_num_threads()}"
+    tag = f"{variant}_{device.type}_t{torch.get_num_threads()}" + (f"_n{args.limit}" if args.limit else "")
     with open(f"results/efficiency_{tag}.json", "w") as fh:
         json.dump(out, fh, indent=2)
     print(f"saved results/efficiency_{tag}.json")

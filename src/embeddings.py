@@ -81,6 +81,25 @@ def build_vocab(
     return vocab, counts
 
 
+def extend_vocab(
+    vocab: Dict[str, int],
+    token_lists: Iterable[Sequence[str]],
+) -> Dict[str, int]:
+    """Append every word not yet in `vocab`, in order of first appearance.
+
+    Existing ids are unchanged. Used only with frozen fastText vectors, which
+    are computed from the word string alone, so adding validation and test
+    words gives them the vector fastText would return at inference time and
+    uses no labels.
+    """
+    out = dict(vocab)
+    for toks in token_lists:
+        for t in toks:
+            if t not in out:
+                out[t] = len(out)
+    return out
+
+
 def encode_tokens(tokens: Sequence[str], vocab: Dict[str, int]) -> List[int]:
     """Words to ids. Anything not in the vocabulary becomes UNK."""
     return [vocab.get(t, UNK_ID) for t in tokens]
