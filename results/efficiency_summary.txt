@@ -1,0 +1,24 @@
+CPU columns use 2 threads for every model.
+model                         params       MB   GPU tw/s  GPU b1 ms   CPU tw/s  CPU b1 ms
+-----------------------------------------------------------------------------------------
+ours (subword only)          176,058      0.7      1,213       4.70      1,068       4.52
+sinbert                  125,389,058    501.6        128       8.97          8     123.08
+xlmt                     277,454,594   1109.8        142       9.71          9      82.44
+xlmr-base                277,454,594   1109.8        145       8.27         11      74.40
+xlmr-large               558,842,882   2235.4         47      18.32          3     303.44
+
+ours on ONE CPU thread: 1,039 tweets/s, batch-1 median 3.97 ms
+ours, file on disk: 0.71 MB model + 0.26 MB tokenizer, no external files
+ours, peak process RAM on CPU: 851 MB (whole Python process: libraries, data and model)
+
+copied to /kaggle/working/efficiency_results:
+   efficiency_minimal_cpu.txt
+   efficiency_minimal_cpu_1thread.txt
+   efficiency_minimal_cpu_t1.json
+   efficiency_minimal_cpu_t2.json
+   efficiency_minimal_cuda_t2.json
+   efficiency_minimal_gpu.txt
+   transformer_efficiency_cpu.txt
+   transformer_efficiency_cpu_t2_n250.json
+   transformer_efficiency_cuda_t2.json
+   transformer_efficiency_gpu.txt
