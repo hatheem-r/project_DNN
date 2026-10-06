@@ -33,6 +33,7 @@ WHAT EACH PIECE DOES
 
 from __future__ import annotations
 
+import math
 from typing import List, Optional
 
 import numpy as np
@@ -154,6 +155,11 @@ class BiLSTMTagger(nn.Module):
         sentence_head: bool = False,
         # Phase 2, Piece 3: token loss when not using the CRF
         token_loss=None,
+        # Sentence-level encoder: "bilstm" (the reported model) or "transformer"
+        encoder: str = "bilstm",
+        tf_layers: int = 2,
+        tf_heads: int = 4,
+        tf_dropout: float = 0.1,
     ):
         super().__init__()
         if not use_word_channel and n_pieces == 0:
@@ -190,11 +196,30 @@ class BiLSTMTagger(nn.Module):
         self.lstm_input_dim = lstm_input
 
         self.dropout = nn.Dropout(dropout)
-        self.lstm = nn.LSTM(
-            lstm_input, hidden_size, num_layers=num_layers,
-            bidirectional=True, batch_first=True,
-            dropout=dropout if num_layers > 1 else 0.0,
-        )
+        # The transformer is a small encoder trained from scratch, with the same
+        # output width as the BiLSTM (2 x hidden_size) so the classifier, CRF and
+        # sentence head are unchanged. The BiLSTM path creates its layers in the
+        # same order as before, keeping earlier per-seed results reproducible.
+        if encoder not in ("bilstm", "transformer"):
+            raise ValueError(f"unknown encoder {encoder!r}")
+        self.encoder_type = encoder
+        self.lstm = None
+        self.transformer = None
+        if encoder == "bilstm":
+            self.lstm = nn.LSTM(
+                lstm_input, hidden_size, num_layers=num_layers,
+                bidirectional=True, batch_first=True,
+                dropout=dropout if num_layers > 1 else 0.0,
+            )
+        else:
+            d_model = hidden_size * 2
+            self.input_proj = nn.Linear(lstm_input, d_model)
+            layer = nn.TransformerEncoderLayer(
+                d_model, tf_heads, dim_feedforward=2 * d_model, dropout=tf_dropout,
+                batch_first=True, norm_first=True,
+            )
+            self.transformer = nn.TransformerEncoder(
+                layer, tf_layers, enable_nested_tensor=False)
         self.classifier = nn.Linear(hidden_size * 2, num_labels)
 
         self.use_crf = use_crf and HAS_CRF
@@ -241,13 +266,32 @@ class BiLSTMTagger(nn.Module):
                 )
             parts.append(sub)
         x = parts[0] if len(parts) == 1 else torch.cat(parts, dim=-1)
-        packed = pack_padded_sequence(
-            x, lengths.cpu(), batch_first=True, enforce_sorted=False
-        )
-        out, _ = self.lstm(packed)
-        out, _ = pad_packed_sequence(out, batch_first=True, total_length=ids.size(1))
+        if self.lstm is not None:
+            packed = pack_padded_sequence(
+                x, lengths.cpu(), batch_first=True, enforce_sorted=False
+            )
+            out, _ = self.lstm(packed)
+            out, _ = pad_packed_sequence(out, batch_first=True, total_length=ids.size(1))
+        else:
+            out = self._transformer_encode(x, lengths)
         self._last_encoder_out = out
         return self.classifier(self.dropout(out))
+
+    def _transformer_encode(self, x, lengths):
+        """Project to the model width, add sinusoidal positions, and attend over
+        real words only. Sinusoidal positions need no maximum length, matching
+        the no-truncation policy in dataset.py."""
+        h = self.input_proj(x)
+        n, d = h.size(1), h.size(2)
+        pos = torch.arange(n, device=h.device, dtype=h.dtype).unsqueeze(1)
+        freq = torch.exp(torch.arange(0, d, 2, device=h.device, dtype=h.dtype)
+                         * (-math.log(10000.0) / d))
+        pe = torch.zeros(n, d, device=h.device, dtype=h.dtype)
+        pe[:, 0::2] = torch.sin(pos * freq)
+        pe[:, 1::2] = torch.cos(pos * freq)
+        pad = (torch.arange(n, device=h.device).unsqueeze(0)
+               >= lengths.to(h.device).unsqueeze(1))
+        return self.transformer(h + pe, src_key_padding_mask=pad)
 
     def encode(self, ids, lengths, piece_ids=None, piece_lens=None):
         """Run the shared encoder and return its per-token states."""

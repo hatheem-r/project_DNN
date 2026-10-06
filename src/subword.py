@@ -101,6 +101,37 @@ def load_sentencepiece(model_path: str) -> spm.SentencePieceProcessor:
     return sp
 
 
+class CharTokenizer:
+    """Characters as pieces: one Unicode code point per piece.
+
+    This is the character-level input of Lample et al. (2016), offered through
+    the three methods the rest of the code uses from a SentencePiece processor,
+    so it drops into the subword channel unchanged. Id 0 is padding and id 1 is
+    unknown, matching how train_sentencepiece sets pad_id and unk_id.
+
+    Built from training words only; characters first seen at test time map to
+    the unknown id.
+    """
+
+    def __init__(self, words: Iterable[str]):
+        chars = sorted({c for w in words for c in w})
+        self.itos = ["<pad>", "<unk>"] + chars
+        self.stoi = {c: i for i, c in enumerate(self.itos)}
+
+    def get_piece_size(self) -> int:
+        return len(self.itos)
+
+    def unk_id(self) -> int:
+        return 1
+
+    def id_to_piece(self, i: int) -> str:
+        return self.itos[i]
+
+    def encode(self, text: str, out_type=int):
+        ids = [self.stoi.get(c, 1) for c in text]
+        return ids if out_type is int else [self.itos[i] for i in ids]
+
+
 # --------------------------------------------------------------------------
 # applying it
 # --------------------------------------------------------------------------
