@@ -1,0 +1,49 @@
+Timing on identical tweets (Kaggle, Tesla T4, 2 CPU threads)
+
+GPU throughput_tweets  every model: test[0:2500]
+GPU latency_tweets     every model: test[3:103]
+CPU throughput_tweets  every model: test[0:250]
+CPU latency_tweets     every model: test[3:103]
+
+CPU columns use 2 threads for every model.
+model                         params       MB  tok/tw  GPU tw/s  GPU b1 ms  CPU tw/s  CPU b1 ms
+-----------------------------------------------------------------------------------------------
+ours (subword only)          176,058      0.7       -     1,261       4.62     1,063       5.18
+sinbert                  125,389,058    501.6    76.3       144       8.73         7     127.12
+xlmt                     277,454,594   1109.8    45.6       164       8.72         8      92.89
+xlmr-base                277,454,594   1109.8    45.6       166       8.43         9      92.33
+xlmr-large               558,842,882   2235.4    45.6        53      16.86         2     364.40
+
+ours on ONE CPU thread: 908 tweets/s, batch-1 median 4.34 ms
+tok/tw = mean subword tokens per tweet for each transformer tokenizer
+
+
+fastText subword vectors for words without a .vec vector
+(train on 6,000-tweet part, early stopping on 1,500, CRF, batch 32, 5 seeds, test F1)
+
+                        seeds     val  val_sd    test  test_sd       P       R
+name                                                                          
+bilstm_word_bpe_ftopen      5  0.7098  0.0037  0.7102   0.0052  0.7482  0.6761
+bilstm_word_ftfill          5  0.6174  0.0036  0.6189   0.0070  0.7104  0.5485
+bilstm_word_ftopen          5  0.6295  0.0059  0.6148   0.0076  0.7108  0.5418 
+
+controls:
+  bilstm_word_only   0.6012 +/- 0.0050   (results/extra_bilstm_word_only.txt)
+  bilstm_bpe_only    0.7061 +/- 0.0079   (results/extra_bilstm_bpe_only.txt)
+  bilstm_word_bpe    0.7104 +/- 0.0069   (results/step7b_bpe1000.txt, earlier hardware)
+
+Does replacing the random rows with fastText vectors help?
+  bilstm_word_ftfill 0.6189 vs bilstm_word_only 0.6012: +0.0177 (larger std 0.0070) -> CLEARLY HIGHER
+
+Does fastText on every word (no UNK) help?
+  bilstm_word_ftopen 0.6148 vs bilstm_word_only 0.6012: +0.0136 (larger std 0.0076) -> modestly higher
+
+Our subword channel vs fastText's own subword information:
+  bilstm_bpe_only 0.7061 vs bilstm_word_ftopen 0.6148: +0.0913 (larger std 0.0079) -> CLEARLY HIGHER
+
+Does the word channel with fastText on every word add to the pieces?
+  bilstm_word_bpe_ftopen 0.7102 vs bilstm_bpe_only 0.7061: +0.0041 (larger std 0.0079) -> NO MEASURABLE DIFFERENCE
+
+Open-vocabulary word channel vs the original word channel, with pieces:
+  bilstm_word_bpe_ftopen 0.7102 vs bilstm_word_bpe 0.7104: -0.0002 (larger std 0.0069) -> NO MEASURABLE DIFFERENCE
+

@@ -1,3 +1,4 @@
+$ python notebooks/10_analysis.py --efficiency --minimal --limit 250 --latency-tweets 100    [GPU hidden]
 
 ========================================================================
 0. SETUP
@@ -22,17 +23,17 @@ parameters (measured):
   lstm_input_dim                        100
   non_embedding_trainable           176,058
 
-inference over the full test split, measured on cpu:
-  tweets                 2,500
-  real tokens            59,670
-  wall clock             2.34s
-  tweets per second      1,068
-  tokens per second      25,490
-  ms per tweet           0.936
+inference over test[0:250], measured on cpu:
+  tweets                 250
+  real tokens            6,079
+  wall clock             0.24s
+  tweets per second      1,063
+  tokens per second      25,847
+  ms per tweet           0.941
 
-batch-1 latency, 495 tweets timed one at a time:
-  median ms per tweet    4.522
-  95th percentile ms     9.599
+batch-1 latency, test[3:103] timed one at a time:
+  median ms per tweet    5.183
+  95th percentile ms     9.985
 
 hardware and settings:
   device                 cpu
@@ -45,9 +46,9 @@ size and dependencies (measured):
   model file on disk     0.71 MB
   tokenizer file         0.26 MB
   external files needed  none
-  peak process RAM       851 MB (whole Python process: libraries, data and model)
+  peak process RAM       806 MB (whole Python process: libraries, data and model)
 
-saved results/efficiency_minimal_cpu_t2.json
+saved results/efficiency_minimal_cpu_t2_n250.json
 
 FOR THE PAPER.
 Report these as MEASURED and state the hardware and batch size (32).

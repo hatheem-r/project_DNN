@@ -1,0 +1,52 @@
+$ python notebooks/07_subword_model.py --final --sp none --matrix artifacts/embedding_matrix_ftfill.npy --tag bilstm_word_ftfill --csv results/results_fasttext_oov.csv 
+
+========================================================================
+0. SETUP
+========================================================================
+device cuda   mode FINAL (scores test)
+seeds [1, 2, 3, 4, 5]   batch 32   crf True   epochs<=60 patience 12
+embedding matrix: artifacts/embedding_matrix_ftfill.npy
+
+row-level results append to: results/results_fasttext_oov.csv
+this readable report goes to stdout - redirect it to results/
+
+train-part 6,000  val 1,500  test 2,500
+vocab 28,456   embedding matrix (28456, 300)
+
+========================================================================
+1. FINAL RUN - none
+========================================================================
+Frozen Phase 1 settings (batch 32, CRF on) so the number is directly
+comparable to the baseline 0.5965.
+
+--- none  (0 pieces)  encoder bilstm  
+    tag: bilstm_word_ftfill
+    trainable 187,658  (subword channel 0, lstm input 300)
+    seed 1  val F1 0.6184   TEST F1 0.6194   (751s, 42 epochs)
+    seed 2  val F1 0.6144   TEST F1 0.6110   (982s, 55 epochs)
+    seed 3  val F1 0.6227   TEST F1 0.6295   (788s, 44 epochs)
+    seed 4  val F1 0.6137   TEST F1 0.6144   (1074s, 60 epochs)
+    seed 5  val F1 0.6180   TEST F1 0.6204   (1034s, 58 epochs)
+    VAL  F1 0.6174 +/- 0.0036   (926s/seed)
+    TEST F1 0.6189 +/- 0.0070   P 0.7104  R 0.5485
+
+========================================================================
+2. RESULT
+========================================================================
+
+  Phase 1 baseline (word only)  0.5965 +/- 0.0103
+  + subword channel             0.6189 +/- 0.0070
+  change                        +0.0224
+
+  our word list                 0.6521   <- still the floor to beat
+  published XLM-R               0.7200
+
+  precision 0.7104   recall 0.5485
+  Phase 1 was precision 0.7452, recall 0.4979.
+
+  CLEAR GAIN. +0.0224 is more than twice the noise (0.0103).
+
+  ABLATION ROWS STILL OWED
+    --pooling mean            does piece ORDER matter?
+    --no-word-channel         is fastText still needed?
+  Both at 5 seeds, same settings.
