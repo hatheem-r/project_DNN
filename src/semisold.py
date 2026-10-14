@@ -38,7 +38,9 @@ when the classifier is already strong. Ours is the lightweight kind.
 
 from __future__ import annotations
 
-from typing import List, Optional, Sequence
+import re
+import unicodedata
+from typing import Iterable, List, Optional, Sequence
 
 import numpy as np
 import pandas as pd
@@ -60,6 +62,28 @@ TOP_TEACHERS = ["xlmr", "xlmt", "sinbert"]
 def load_semisold() -> pd.DataFrame:
     from datasets import Dataset as HFDataset, load_dataset
     return HFDataset.to_pandas(load_dataset(DATASET_NAME, split="train"))
+
+
+def match_key(text: str) -> str:
+    """A tweet with user mentions, URLs, punctuation, symbols and whitespace
+    removed. SOLD stores tokenised text and SemiSOLD raw text, so the same tweet
+    differs in spacing and punctuation between the two. The zero-width joiner is
+    kept because it is part of Sinhala letters."""
+    s = re.sub(r"@USER|URL|https?\S+", "", str(text))
+    return "".join(c for c in s
+                   if c == "‍" or not (c.isspace() or unicodedata.category(c)[0] in "PSZC"))
+
+
+def drop_overlap(df: pd.DataFrame, sold_texts: Iterable[str],
+                 text_col: str = "text") -> pd.DataFrame:
+    """Remove SemiSOLD rows that are SOLD tweets. The public SemiSOLD release
+    contains nearly all SOLD training and test tweets."""
+    keys = {match_key(t) for t in sold_texts}
+    keys.discard("")
+    hit = df[text_col].map(match_key).isin(keys)
+    print(f"  removed {int(hit.sum()):,} SemiSOLD rows that match a SOLD tweet; "
+          f"{int((~hit).sum()):,} remain")
+    return df[~hit].reset_index(drop=True)
 
 
 def describe(df: pd.DataFrame) -> None:

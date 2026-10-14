@@ -59,6 +59,8 @@ p.add_argument("--gamma", type=float, default=2.0)
 p.add_argument("--alpha", type=float, default=0.75)
 p.add_argument("--distill-weight", type=float, default=1.0)
 p.add_argument("--uncertainty", type=float, default=0.1)
+p.add_argument("--exclude-sold", action="store_true",
+               help="remove SemiSOLD rows that are SOLD training or test tweets")
 p.add_argument("--minimal", action="store_true", help="subword channel only")
 p.add_argument("--seeds", type=int, nargs="+", default=None)
 p.add_argument("--epochs", type=int, default=60)
@@ -75,7 +77,7 @@ if not any([args.piece2, args.piece3, args.piece4, args.final]):
 PIECE = ("final" if args.final else
          "piece2" if args.piece2 else
          "piece3" if args.piece3 else "piece4")
-CSV_PATH = f"results/results_{PIECE}.csv"
+CSV_PATH = f"results/results_{PIECE}{'_nosold' if args.exclude_sold else ''}.csv"
 
 SEEDS = args.seeds or ([1, 2, 3, 4, 5] if args.final else [1, 2, 3])
 BATCH = args.batch_size or (32 if args.final else 64)
@@ -284,6 +286,9 @@ elif args.piece4:
     print("Loading SemiSOLD (145k tweets with saved teacher scores)...")
     raw = load_semisold()
     describe(raw)
+    if args.exclude_sold:
+        from semisold import drop_overlap
+        raw = drop_overlap(raw, [" ".join(t) for t in [*train_full["token_list"], *test["token_list"]]])
     print()
     semi = prepare(raw, uncertainty_threshold=args.uncertainty)
     print("""
@@ -298,7 +303,8 @@ the sentence head, and the shared encoder carries any benefit to the tokens.""")
     for dw in [0.0, 0.5, 1.0]:
         args.distill_weight = dw
         dl = None if dw == 0 else make_semisold_loader(semi, vocab, BATCH, sp=sp)
-        va, _ = run(f"piece4_dw{dw}", args.loss, args.lam, distill_loader=dl)
+        va, _ = run(f"piece4_dw{dw}" + ("_nosold" if args.exclude_sold else ""),
+                    args.loss, args.lam, distill_loader=dl)
         res[dw] = va
     rule("PIECE 4 RANKING")
     print(f"{'distill w':>10} {'val F1':>9} {'std':>8} {'P':>9} {'R':>9}")
@@ -326,7 +332,11 @@ else:
     dl = None
     if args.lam > 0 and args.distill_weight > 0:
         from semisold import load_semisold, prepare, make_semisold_loader
-        semi = prepare(load_semisold(), uncertainty_threshold=args.uncertainty)
+        raw = load_semisold()
+        if args.exclude_sold:
+            from semisold import drop_overlap
+            raw = drop_overlap(raw, [" ".join(t) for t in [*train_full["token_list"], *test["token_list"]]])
+        semi = prepare(raw, uncertainty_threshold=args.uncertainty)
         dl = make_semisold_loader(semi, vocab, BATCH, sp=sp)
     va, ta = run("final_combined", args.loss, args.lam, distill_loader=dl, score_test=True)
     rule("RESULT")
