@@ -1,0 +1,98 @@
+
+========================================================================
+0. SETUP
+========================================================================
+experiment: PIECE4   owner: kaggle
+device cuda   seeds [1, 2, 3, 4, 5]   batch 64   crf False
+train-part 6,000  val 1,500  test 2,500
+fitting on 6,000 tweets (train-part)
+tokenizer 1,000 pieces   vocab 28,456   matrix (28456, 300)
+inverse-frequency class weights: [0.522, 12.041]
+
+========================================================================
+PIECE 4 - OFFLINE DISTILLATION FROM SemiSOLD
+========================================================================
+Loading SemiSOLD (145k tweets with saved teacher scores)...
+
+
+
+Generating train split:   0%|          | 0/145994 [00:00<?, ? examples/s]
+Generating train split:   7%|▋         | 10000/145994 [00:00<00:01, 75007.98 examples/s]
+Generating train split:  14%|█▎        | 20000/145994 [00:00<00:01, 87388.86 examples/s]
+Generating train split:  21%|██        | 30000/145994 [00:00<00:01, 91248.02 examples/s]
+Generating train split:  27%|██▋       | 40000/145994 [00:00<00:01, 93842.47 examples/s]
+Generating train split:  41%|████      | 60000/145994 [00:00<00:00, 98059.14 examples/s]
+Generating train split:  48%|████▊     | 70000/145994 [00:00<00:00, 98529.13 examples/s]
+Generating train split:  55%|█████▍    | 80000/145994 [00:00<00:00, 97953.73 examples/s]
+Generating train split:  68%|██████▊   | 100000/145994 [00:01<00:00, 100728.39 examples/s]
+Generating train split:  82%|████████▏ | 120000/145994 [00:01<00:00, 103207.83 examples/s]
+Generating train split:  96%|█████████▌| 140000/145994 [00:01<00:00, 105434.92 examples/s]
+Generating train split: 100%|██████████| 145994/145994 [00:01<00:00, 100554.42 examples/s]
+rows: 145,994
+columns: ['post_id', 'text', 'xlmr', 'xlmt', 'mbert', 'sinbert', 'lstm_ft', 'cnn_ft', 'lstm_cbow', 'cnn_cbow', 'lstm_sl', 'cnn_sl', 'svm']
+teacher score columns found: 11 of 11  ['xlmr', 'xlmt', 'mbert', 'sinbert', 'lstm_ft', 'cnn_ft', 'lstm_cbow', 'cnn_cbow', 'lstm_sl', 'cnn_sl', 'svm']
+  removed 10,087 SemiSOLD rows that match a SOLD tweet; 135,907 remain
+
+  teachers used: ['xlmr', 'xlmt', 'sinbert']
+  135,907 rows -> 84,462 kept at uncertainty <= 0.1
+  soft target mean 0.204, 16.5% lean offensive
+
+No pretrained language model is loaded, run, or backpropagated through here.
+The teacher scores were computed by the dataset authors in 2022 and stored as
+columns in a public file. We consume a published artifact.
+
+They are SENTENCE level - SemiSOLD has no token labels - so distillation trains
+the sentence head, and the shared encoder carries any benefit to the tokens.
+
+--- piece4_dw0.0_nosold   trainable 338,036  (sentence head 8,386)
+    seed 1  val F1 0.6964   (248s, 39 ep)
+    seed 2  val F1 0.6980   (284s, 45 ep)
+    seed 3  val F1 0.6962   (340s, 54 ep)
+    seed 4  val F1 0.6916   (318s, 50 ep)
+    seed 5  val F1 0.7008   (294s, 46 ep)
+    VAL  0.6966 +/- 0.0033   P 0.7446  R 0.6545   (297s/seed)
+
+--- piece4_dw0.5_nosold   trainable 338,036  (sentence head 8,386)
+    seed 1  val F1 0.7079   (463s, 45 ep)
+    seed 2  val F1 0.7103   (563s, 55 ep)
+    seed 3  val F1 0.7028   (520s, 51 ep)
+    seed 4  val F1 0.6979   (507s, 50 ep)
+    seed 5  val F1 0.7003   (395s, 39 ep)
+    VAL  0.7038 +/- 0.0052   P 0.7572  R 0.6579   (489s/seed)
+
+--- piece4_dw1.0_nosold   trainable 338,036  (sentence head 8,386)
+    seed 1  val F1 0.7108   (550s, 54 ep)
+    seed 2  val F1 0.7133   (616s, 60 ep)
+    seed 3  val F1 0.7027   (622s, 60 ep)
+    seed 4  val F1 0.7041   (599s, 58 ep)
+    seed 5  val F1 0.6972   (473s, 46 ep)
+    VAL  0.7056 +/- 0.0065   P 0.7500  R 0.6666   (572s/seed)
+
+========================================================================
+PIECE 4 RANKING
+========================================================================
+ distill w    val F1      std         P         R
+--------------------------------------------------
+       0.0    0.6966   0.0033    0.7446    0.6545
+       0.5    0.7038   0.0052    0.7572    0.6579
+       1.0    0.7056   0.0065    0.7500    0.6666
+
+best weight=1.0 vs no distillation: +0.0090  modest gain, report with the std
+
+The authors found lightweight models gain most from this augmentation
+(BiLSTM+CBOW +2.78%, XLM-R +0.63%). If we see nothing, one likely reason is
+that Piece 1 already moved us into the "already strong" regime where they
+observed little benefit. Say that, with their numbers cited.
+
+========================================================================
+WHAT TO COMMIT
+========================================================================
+  results/results_piece4_nosold.csv
+  results/piece4_report.txt   (if you redirected stdout there)
+
+Commit ONLY those two files. Do not commit artifacts/ or embeddings/.
+
+    git add results/results_piece4_nosold.csv results/piece4_report.txt
+    git commit -m "piece4 results (kaggle)"
+    git pull --rebase && git push
+
