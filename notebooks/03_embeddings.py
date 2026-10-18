@@ -152,10 +152,8 @@ print(f"  of those, having a real fastText vector: {len(covered):,} ({len(covere
 all_cov = stats["coverage"]
 print(f"  overall vocabulary coverage for comparison: {all_cov:.1%}")
 print("""
-If offensive words are covered LESS than average, that is a real finding
-and belongs in the paper: swear words and slang are under-represented in
-the Common Crawl text fastText was trained on. It would also strengthen
-the subword argument further.""")
+Lower coverage for offensive words than overall would suggest that slang is
+under-represented in the Common Crawl text fastText was trained on.""")
 
 
 # ==========================================================================

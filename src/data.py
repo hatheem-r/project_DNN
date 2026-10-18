@@ -167,8 +167,7 @@ VAL_FRACTION = 0.2
 def train_val_split(train_df, val_fraction: float = VAL_FRACTION, seed: int = VAL_SEED):
     """Split the official train split into train-part and validation.
 
-    Deterministic: the same seed always produces the same split. Record the
-    seed in the paper.
+    Deterministic: the same seed always produces the same split.
     """
     rng = np.random.default_rng(seed)
     idx = rng.permutation(len(train_df))

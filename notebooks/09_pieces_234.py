@@ -8,15 +8,14 @@ Phase 2, Pieces 2, 3 and 4 - one script, three experiments.
 
 Everything is chosen on VALIDATION. Test is scored only by --final.
 
-Base model, frozen after Piece 1:
-    bpe_1000 subword channel, piece_dim 50, subword_dim 100, BiLSTM pooling,
-    hidden 64, dropout 0.5, Adam lr 1e-3, batch 32.
+Base model: word channel + bpe_1000 subword channel, piece_dim 50,
+subword_dim 100, BiLSTM pooling, hidden 64, dropout 0.5, Adam lr 1e-3. No CRF.
+Batch 64 (32 with --final). Three seeds unless --seeds is given.
 
-Run:
+Run (as reported in the paper):
     python notebooks/09_pieces_234.py --piece3
-    python notebooks/09_pieces_234.py --piece2
-    python notebooks/09_pieces_234.py --piece4
-    python notebooks/09_pieces_234.py --final --lambda 0.3 --loss focal
+    python notebooks/09_pieces_234.py --piece2 --seeds 1 2 3 4 5
+    python notebooks/09_pieces_234.py --piece4 --lambda 0.3 --exclude-sold --seeds 1 2 3 4 5
 """
 import sys, os, csv, argparse, statistics
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))

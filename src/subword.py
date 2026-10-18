@@ -194,14 +194,14 @@ def unseen_word_rescue(
     train_tokens: Iterable[Sequence[str]],
     eval_tokens: Iterable[Sequence[str]],
 ) -> Dict[str, float]:
-    """THE NUMBER THAT JUSTIFIES THIS WHOLE COMPONENT.
+    """Intrinsic coverage of unseen words by training pieces.
 
-    Take the evaluation words that never appeared in training - words the
-    word-level model has nothing at all for. What fraction of THEIR PIECES did
-    appear in training?
+    Take the evaluation words that never appeared in training. What fraction of
+    their pieces did appear in training?
 
-    High means subwords rescue unseen words, because the pieces are familiar
-    even though the whole word is not. That is the mechanism, measured.
+    In our experiments this ranked tokenizers in the reverse of their downstream
+    F1 (see notebooks/06_subword_tokenizer.py), so it is a diagnostic, not a
+    selection criterion.
     """
     train_words = set()
     train_pieces = set()

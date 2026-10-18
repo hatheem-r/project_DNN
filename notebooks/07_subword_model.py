@@ -20,10 +20,10 @@ Adds a SECOND input channel to the frozen Phase 1 baseline. Nothing is removed.
 
 WHY CONCATENATE RATHER THAN REPLACE
 -----------------------------------
-80.8% of vocabulary words have a real fastText vector and the word channel
-already works for them. For the rest it is a random vector - pure noise - and
-the subword channel carries the signal instead. Keeping both gives the model a
-fallback rather than throwing away what works.
+About 81% of vocabulary words have a real fastText vector and the word channel
+carries information for them. For the rest it is a random vector, and the
+subword channel carries the signal instead. Keeping both lets the model use
+either.
 
 BEFORE RUNNING
 --------------
@@ -34,8 +34,8 @@ Run:
     # fast sweep on validation (batch 128, no CRF)
     python notebooks/07_subword_model.py --sweep > results/step7_sweep.txt
 
-    # winner, full settings, 5 seeds, test scored once
-    python notebooks/07_subword_model.py --final --sp bpe_8000 > results/step7_final.txt
+    # one setting, full settings, 5 seeds, test scored once
+    python notebooks/07_subword_model.py --final --sp bpe_1000 > results/step7b_bpe1000.txt
 """
 import sys, os, csv, argparse, statistics
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))

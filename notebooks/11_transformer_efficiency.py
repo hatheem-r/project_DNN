@@ -1,6 +1,7 @@
 """
-Transformer inference efficiency. Measures the same quantities as notebooks/10_analysis.py --efficiency, on
-the same hardware and same test split, so the two tables sit side by side.
+Transformer inference efficiency. Measures the same quantities as
+notebooks/10_analysis.py --efficiency, on the same hardware and the same test
+tweets, so the two sets of results are directly comparable.
 
 WHAT THIS DOES NOT DO
 ----------------------
@@ -8,8 +9,8 @@ It does not fine-tune anything. Each transformer is loaded with its public
 pretrained weights plus a fresh, UNTRAINED classification head, then timed doing
 a forward pass over the test tweets. We are timing the ARCHITECTURE's inference
 cost, not reproducing its accuracy - accuracy numbers are cited from the
-published papers, never measured here. Loading a public model to time it is not
-fine-tuning it, so this does not touch the no-PLM rule that governs our own model.
+published papers, never measured here. No pretrained model is part of our own
+system; these models are loaded only to time them.
 
 Run:
     python notebooks/11_transformer_efficiency.py --model sinbert

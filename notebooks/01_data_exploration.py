@@ -4,8 +4,8 @@ Phase 1 / Step 1 - SOLD data exploration and verification.
 Run:  python notebooks/01_data_exploration.py
 (or paste cell by cell into a Colab notebook)
 
-Prints a report answering every question you must settle before writing
-any model code. Read the OUTPUT, don't just run it.
+Prints a report on the dataset: split sizes, label distribution, rationale
+format, tweet lengths, vocabulary and unseen words.
 """
 
 import sys
@@ -196,8 +196,7 @@ print(f"test  vocab size: {len(test_vocab):,}")
 print(f"test types unseen in train: {len(unseen):,} ({len(unseen)/len(test_vocab):.1%})")
 print(f"test tokens unseen in train: {unseen_tok:,} "
       f"({unseen_tok / sum(test_vocab.values()):.1%} of all test tokens)")
-print("\nThis last percentage is the empirical case for subword modelling.")
-print("Record it - it goes in the paper.")
+print("\nThis last percentage motivates the subword channel.")
 
 print("\nmost common tokens:")
 for tok, c in train_vocab.most_common(15):

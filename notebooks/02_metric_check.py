@@ -202,7 +202,7 @@ Baselines on the SOLD test split, offensive-class F1:
   flag every token              {s_all['offensive_f1']:.4f}
   flag no token                 {s_none['offensive_f1']:.4f}
   random at train rate          {s_rand['offensive_f1']:.4f}
-  word list (val-chosen)        {s_lex['offensive_f1']:.4f}   <- THE FLOOR TO BEAT
+  word list (val-chosen)        {s_lex['offensive_f1']:.4f}
       setting: min_count={best['min_count']}, threshold={best['threshold']}, {len(final_lex):,} words
       test P={s_lex['offensive_precision']:.4f}  R={s_lex['offensive_recall']:.4f}
 
@@ -214,7 +214,4 @@ Published, for comparison:
   XLM-R                         0.72
   XLM-R + TSD transfer          0.73   (best published)
 
-Our BiLSTM in Step 4 must clearly beat the word list, not just 0.60.
-A lookup table is the dumbest possible model. If a neural network cannot
-beat it, the neural network is broken or pointless.
 """)

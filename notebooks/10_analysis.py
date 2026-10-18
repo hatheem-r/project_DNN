@@ -185,8 +185,7 @@ if args.errors:
     print(f"  P {s['offensive_precision']:.4f}   R {s['offensive_recall']:.4f}   "
           f"F1 {s['offensive_f1']:.4f}")
     print(f"  {s['support_offensive']:,} offensive of {s['support_total']:,} tokens")
-    print("\n  This is ONE seed, so it will differ slightly from the 5-seed mean")
-    print("  reported in the paper. Use the 5-seed figure for any headline claim.")
+    print("\n  This is one seed, so it differs slightly from the five-seed mean.")
 
     # ------------------------------------------------------------------
     rule("2. ERRORS BY WORD FAMILIARITY   <-- TESTS OUR CENTRAL CLAIM")

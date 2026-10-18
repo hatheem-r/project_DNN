@@ -21,9 +21,9 @@ number of epochs taken from the validation runs. bpe_1000 stopped best at epochs
 
 TWO MODELS ARE REPORTED
 -----------------------
-  full     word channel + subword channel   best F1
+  full     word channel + subword channel   needs the fastText vectors
   minimal  subword channel only             no pretrained resources at all,
-                                            176k trainable, -0.0012 val F1
+                                            176k trainable parameters
 
 Run:
     python notebooks/08_final_model.py --both
@@ -62,6 +62,7 @@ USE_CRF = True
 FIXED_EPOCHS = 35          # median best epoch from the bpe_1000 validation runs
 
 BASELINE = 0.5965          # Phase 1 full-train refit, word only
+XLMR_LARGE = 558_842_882   # parameters, measured by 11_transformer_efficiency.py
 BASELINE_STD = 0.0103
 WORDLIST = 0.6521
 
@@ -252,7 +253,7 @@ if "full" in results:
     a, pr = results["full"]
     f1 = a["offensive_f1"]["mean"]
     print(f"""
-CHANGE FROM THE PHASE 1 BASELINE
+CHANGE FROM THE WORD-LEVEL BASELINE
   {BASELINE:.4f} -> {f1:.4f}   ({f1 - BASELINE:+.4f})
   precision 0.7452 -> {a['offensive_precision']['mean']:.4f}  ({a['offensive_precision']['mean'] - 0.7452:+.4f})
   recall    0.4979 -> {a['offensive_recall']['mean']:.4f}  ({a['offensive_recall']['mean'] - 0.4979:+.4f})
@@ -261,36 +262,24 @@ CHANGE FROM THE PHASE 1 BASELINE
     dp = a["offensive_precision"]["mean"] - 0.7452
     dr = a["offensive_recall"]["mean"] - 0.4979
     if f1 < BASELINE:
-        print("""  WORSE THAN THE BASELINE. Something is wrong - check that the tokenizer,
-  vocabulary and embedding matrix were all rebuilt on the FULL train split,
-  and that the epoch budget suits the larger dataset.""")
+        print("  Below the word-level baseline.")
     elif dr > 0.05 and abs(dp) < 0.05:
-        print("""  The gain is recall-driven at near-constant precision. That is the mechanism
-  predicted from the measured 48.7% unseen-type rate, not a threshold shift.
-  Say this in the paper - the mechanism is what makes the number credible.""")
+        print("  The gain comes from recall, with precision within 0.05 of the baseline.")
     elif dr > 0.05 and dp < -0.05:
-        print(f"""  Recall rose {dr:+.4f} but precision fell {dp:+.4f}. The model is firing more
-  freely rather than seeing more. Report both columns and do NOT claim the
-  unseen-morphology mechanism without further evidence.""")
+        print(f"  Recall rose {dr:+.4f} and precision fell {dp:+.4f}.")
     else:
-        print("""  The precision/recall pattern differs from the 6,000-tweet runs. Report what
-  the numbers actually show rather than the expected story.""")
+        print("  Recall changed by less than 0.05.")
 
-    print(f"""EFFICIENCY
-  ours {pr['trainable']:,} trainable vs XLM-R-large ~560,000,000
-  = {560_000_000 / pr['trainable']:,.0f}x fewer trainable parameters""")
+    print(f"""PARAMETERS
+  ours {pr['trainable']:,} trainable vs XLM-R-large {XLMR_LARGE:,}
+  = {XLMR_LARGE / pr['trainable']:,.0f}x fewer""")
 
 if "minimal" in results:
     a, pr = results["minimal"]
     print(f"""
 MINIMAL MODEL
   {a['offensive_f1']['mean']:.4f} +/- {a['offensive_f1']['std']:.4f} with {pr['trainable']:,} trainable parameters
-  and NO pretrained embeddings of any kind - no fastText, no PLM.
-  = {560_000_000 / pr['trainable']:,.0f}x fewer trainable parameters than XLM-R-large""")
+  and no pretrained embeddings or language model.
+  = {XLMR_LARGE / pr['trainable']:,.0f}x fewer parameters than XLM-R-large""")
 
 print(f"\nrows written to {RESULTS_CSV}")
-print("""
-WRITE IT UP HONESTLY. The headline is not "we nearly match XLM-R". It is:
-a lightweight model with a subword channel reaches this F1 at a small fraction
-of the parameters, and the gain is precision-neutral and recall-driven.
-The mechanism is what makes it credible.""")

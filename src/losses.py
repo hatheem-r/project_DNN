@@ -28,9 +28,9 @@ recall at a NET LOSS in F1. Always read both columns, never F1 alone.
 NOTE ON THE CRF
 ---------------
 The CRF computes its own sequence likelihood and does not accept per-class
-weights. Step 7b showed the CRF is now redundant (0.7064 without vs 0.7043
-with, inside noise), so the loss comparison runs WITHOUT the CRF. That is a
-documented, evidence-backed choice, not a convenience.
+weights. With the subword channel the CRF made no measurable difference
+(0.7064 without vs 0.7043 with, results/step7b_nocrf.txt), so the loss
+comparison runs without it.
 """
 
 from __future__ import annotations

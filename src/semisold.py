@@ -25,8 +25,8 @@ BiLSTM, the sentence-level signal reaches the shared representation.
 UNCERTAINTY FILTERING - USE THE AUTHORS' OWN FINDING
 ----------------------------------------------------
 They filtered by disagreement among the top models and found a standard
-deviation threshold of 0.1 optimal (~8,474 instances). A looser 0.15 added
-47,746 instances but so much noise that results DROPPED. We default to 0.1.
+deviation threshold of 0.1 best (8,474 instances with their teachers). At 0.15
+(47,746 instances) most of their models scored lower. We default to 0.1.
 
 OVERLAP WITH SOLD
 -----------------
