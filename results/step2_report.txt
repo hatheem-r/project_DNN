@@ -104,17 +104,15 @@ D3. RUN ONCE ON TEST
 ------------------------------------------------------------------------
   precision 0.6361
   recall    0.6689
-  F1        0.6521   <- REPORT THIS
+  F1        0.6521
 
   validation F1 was 0.6453, test F1 is 0.6521 (gap +0.0068).
   A small gap means validation predicts test well. A large gap means
   the validation split is too small or unlucky.
 
-DO NOT go back and try more settings to push this number up. That would be
-the same mistake the earlier version of this file made.
 
 ========================================================================
-SUMMARY - COPY INTO THE README
+SUMMARY
 ========================================================================
 
 Baselines on the SOLD test split, offensive-class F1:
@@ -122,7 +120,7 @@ Baselines on the SOLD test split, offensive-class F1:
   flag every token              0.0732
   flag no token                 0.0000
   random at train rate          0.0417
-  word list (val-chosen)        0.6521   <- THE FLOOR TO BEAT
+  word list (val-chosen)        0.6521
       setting: min_count=1, threshold=0.3, 1,506 words
       test P=0.6361  R=0.6689
 
@@ -133,8 +131,4 @@ Published, for comparison:
   XLM-T                         0.70
   XLM-R                         0.72
   XLM-R + TSD transfer          0.73   (best published)
-
-Our BiLSTM in Step 4 must clearly beat the word list, not just 0.60.
-A lookup table is the dumbest possible model. If a neural network cannot
-beat it, the neural network is broken or pointless.
 

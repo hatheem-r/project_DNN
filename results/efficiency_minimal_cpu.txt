@@ -10,7 +10,7 @@ model: subword only
 tokenizer 1,000 pieces   vocab 33,006
 
 ========================================================================
-EFFICIENCY MEASUREMENTS - FOR SECTION 9
+EFFICIENCY MEASUREMENTS
 ========================================================================
 loaded artifacts/analysis_model_minimal.pt
 parameters (measured):
@@ -50,10 +50,3 @@ size and dependencies (measured):
 
 saved results/efficiency_minimal_cpu_t2_n250.json
 
-FOR THE PAPER.
-Report these as MEASURED and state the hardware and batch size (32).
-Published transformer figures should be cited as parameter counts only, unless
-you time XLM-R yourself on the same GPU in inference-only mode. Loading a model
-to time its forward pass is not fine-tuning, so that comparison is available to
-you if you want a like-for-like throughput number - but say clearly which figures
-are measured and which are cited.

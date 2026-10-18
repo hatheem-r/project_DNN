@@ -56,7 +56,6 @@ python notebooks/03_embeddings.py        # writes artifacts/embedding_matrix.npy
 | `runners/` | Kaggle and Colab notebooks that clone this repository and run the scripts on a free GPU |
 | `results/` | logs of every run reported in the paper, plus executed runner notebooks |
 | `tests/` | metric and subword-alignment tests |
-| `docs/development_log.md` | the project's working notes |
 
 ## Naming
 

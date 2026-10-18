@@ -2,25 +2,10 @@
 ========================================================================
 0. SETUP
 ========================================================================
-experiment: PIECE2   owner: Sabith
+experiment: PIECE2
 device cuda   seeds [1, 2, 3, 4, 5]   batch 64   crf False
 
-Downloading readme:   0%|          | 0.00/7.93k [00:00<?, ?B/s]
-Downloading readme: 100%|██████████| 7.93k/7.93k [00:00<00:00, 95.0kB/s]
 
-Downloading data:   0%|          | 0.00/4.72M [00:00<?, ?B/s]
-Downloading data: 100%|██████████| 4.72M/4.72M [00:00<00:00, 30.6MB/s]
-Downloading data: 100%|██████████| 4.72M/4.72M [00:00<00:00, 29.5MB/s]
-
-Downloading data:   0%|          | 0.00/1.60M [00:00<?, ?B/s]
-Downloading data: 100%|██████████| 1.60M/1.60M [00:00<00:00, 19.1MB/s]
-
-Generating train split:   0%|          | 0/7500 [00:00<?, ? examples/s]
-Generating train split: 100%|██████████| 7500/7500 [00:00<00:00, 40377.94 examples/s]
-Generating train split: 100%|██████████| 7500/7500 [00:00<00:00, 39691.73 examples/s]
-
-Generating test split:   0%|          | 0/2500 [00:00<?, ? examples/s]
-Generating test split: 100%|██████████| 2500/2500 [00:00<00:00, 48683.35 examples/s]
 train-part 6,000  val 1,500  test 2,500
 fitting on 6,000 tweets (train-part)
   scanned 808,044 lines, matched 23,314 of 28,456 vocab words
@@ -90,20 +75,5 @@ PIECE 2 RANKING
      0.5    0.6943   0.0032    0.7582    0.6408
      1.0    0.6834   0.0031    0.7731    0.6126
 
-best lambda=0.1 vs lambda=0: -0.0018  NO MEASURABLE EFFECT - report the null
-
-Use --lambda 0.1 for Piece 4 even if the gain here is null:
-the sentence head is REQUIRED for distillation to have anywhere to go.
-
-========================================================================
-WHAT TO COMMIT
-========================================================================
-  results/results_piece2.csv
-  results/piece2_report.txt   (if you redirected stdout there)
-
-Commit ONLY those two files. Do not commit artifacts/ or embeddings/.
-
-    git add results/results_piece2.csv results/piece2_report.txt
-    git commit -m "piece2 results (Sabith)"
-    git pull --rebase && git push
+best lambda=0.1 vs lambda=0: -0.0018  no measurable effect
 

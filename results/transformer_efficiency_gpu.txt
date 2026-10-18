@@ -140,7 +140,7 @@ Notes:
     batch-1 latency  median 16.855 ms, 95th pct 26.797 ms
 
 ========================================================================
-SUMMARY - FOR SECTION 9
+SUMMARY
 ========================================================================
 device cuda, 2 CPU threads, 2,500 tweets, batch 32
 model                params       MB   tweets/s   ms/tweet    b1 ms   peak MB
@@ -157,4 +157,3 @@ models count their own subword tokens, ours counts words.
 
 saved results/transformer_efficiency_cuda_t2.json
 
-Also commit the printed summary table above (redirect stdout to a .txt file).

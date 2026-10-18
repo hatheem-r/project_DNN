@@ -58,11 +58,9 @@ BEST ON VALIDATION: bpe_2000  (0.7060)
 
 GRAPHEME CONTROL (bpe_8000 vs unigram_8000, same vocabulary size)
   difference -0.0004, pooled std 0.0036
-  Inside the noise. Step 6's grapheme finding does not translate
-  into an F1 difference here. Report it as a tokenizer-quality
-  observation, NOT as an accuracy claim.
+  Within one pooled standard deviation: no measurable difference.
 
-NEXT: run the winner with the frozen Phase 1 settings and score test once.
+Final run for the best setting:
 
     python notebooks/07_subword_model.py --final --sp bpe_2000
 

@@ -7,10 +7,11 @@ their headers), and the `lambda` column of `results_piece2.csv` was filled in
 from each row's run tag after a logging bug. The main `README.md` maps each
 table of the paper to its command and log.
 
-Some logs were produced by earlier versions of the scripts. Those versions
-printed working notes for the team (for example, suggested git commands and an
-`owner` label for each run); the current scripts no longer print them, and the
-numbers are unaffected.
+Some logs were produced by earlier versions of the scripts, which also printed
+working notes (suggested next steps, git commands, a per-run `owner` label).
+Those notes have been removed from the `.txt` logs, and the `owner` column from
+the CSV files; no number was changed. The executed notebooks (`*_run.ipynb`) are
+kept exactly as they ran.
 
 | Files | Contents |
 |---|---|
