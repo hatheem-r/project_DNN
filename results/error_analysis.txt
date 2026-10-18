@@ -3,24 +3,7 @@
 0. SETUP
 ========================================================================
 
-Downloading readme:   0%|          | 0.00/7.93k [00:00<?, ?B/s]
-Downloading readme: 100%|██████████| 7.93k/7.93k [00:00<00:00, 29.6kB/s]
-Downloading readme: 100%|██████████| 7.93k/7.93k [00:00<00:00, 29.5kB/s]
 
-Downloading data:   0%|          | 0.00/4.72M [00:00<?, ?B/s]
-Downloading data: 100%|██████████| 4.72M/4.72M [00:00<00:00, 30.8MB/s]
-Downloading data: 100%|██████████| 4.72M/4.72M [00:00<00:00, 29.8MB/s]
-
-Downloading data:   0%|          | 0.00/1.60M [00:00<?, ?B/s]
-Downloading data: 100%|██████████| 1.60M/1.60M [00:00<00:00, 7.35MB/s]
-Downloading data: 100%|██████████| 1.60M/1.60M [00:00<00:00, 7.28MB/s]
-
-Generating train split:   0%|          | 0/7500 [00:00<?, ? examples/s]
-Generating train split: 100%|██████████| 7500/7500 [00:00<00:00, 38413.74 examples/s]
-Generating train split: 100%|██████████| 7500/7500 [00:00<00:00, 37662.79 examples/s]
-
-Generating test split:   0%|          | 0/2500 [00:00<?, ? examples/s]
-Generating test split: 100%|██████████| 2500/2500 [00:00<00:00, 43884.12 examples/s]
 device cuda   train 7,500   test 2,500
 model: word + subword
 training the tokenizer on the full train split
@@ -38,8 +21,7 @@ saved artifacts/analysis_model.pt
   P 0.7460   R 0.6631   F1 0.7021
   2,268 offensive of 59,670 tokens
 
-  This is ONE seed, so it will differ slightly from the 5-seed mean
-  reported in the paper. Use the 5-seed figure for any headline claim.
+  This is one seed, so it differs slightly from the five-seed mean.
 
 ========================================================================
 2. ERRORS BY WORD FAMILIARITY   <-- TESTS OUR CENTRAL CLAIM
@@ -55,12 +37,6 @@ unseen         7,851     106      89     162   0.5436   0.3955   0.4579
 
   seen minus unseen F1: +0.2739
 
-INTERPRET CAREFULLY, AND REPORT WHICHEVER IT IS.
-  A large positive gap means subwords narrowed the unseen-word problem but did
-  not solve it. Say that; it is an honest limitation and a clear direction for
-  future work.
-  A small gap means the mechanism claim is strongly supported.
-  Either way this number belongs in Section 7.7.
 
 ========================================================================
 3. THE MOST FREQUENT INDIVIDUAL ERRORS
@@ -107,7 +83,7 @@ still missed it, the failure is contextual rather than lexical - which is a
 different and more interesting kind of error.
 
 ========================================================================
-4. EXAMPLE TWEETS FOR SECTION 7.7
+4. EXAMPLE TWEETS
 ========================================================================
 Legend:  [word] correct hit   <word> false positive   {word} missed
 
@@ -167,13 +143,5 @@ Legend:  [word] correct hit   <word> false positive   {word} missed
   #272  sentence label = OFF
     @USER සාගර මේ දන්න නොදන්ම හැම {රෙද්දම} දන්නව වගේ <රගන්ඩ> එපා. ගෑනියෙක් උනත් පිරිමියෙක් උනත් කරන්නේ [සක්කිලි] කම්නම් උන් [සක්කිලිම] තමා
 
-NEXT STEP, AND IT NEEDS A HUMAN.
-
-Pick five to eight examples above and write Section 7.7. For each, say WHY the
-model behaved as it did: an unseen inflection of a known root, offence carried by
-context rather than any single word, sarcasm, or a plausible annotation
-disagreement. That judgement requires reading Sinhala and cannot be automated.
-
-Reviewers consistently reward this section and almost no student paper has one.
 
 raw predictions saved to results/error_analysis_raw.json

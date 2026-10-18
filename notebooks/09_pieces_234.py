@@ -8,15 +8,14 @@ Phase 2, Pieces 2, 3 and 4 - one script, three experiments.
 
 Everything is chosen on VALIDATION. Test is scored only by --final.
 
-Base model, frozen after Piece 1:
-    bpe_1000 subword channel, piece_dim 50, subword_dim 100, BiLSTM pooling,
-    hidden 64, dropout 0.5, Adam lr 1e-3, batch 32.
+Base model: word channel + bpe_1000 subword channel, piece_dim 50,
+subword_dim 100, BiLSTM pooling, hidden 64, dropout 0.5, Adam lr 1e-3. No CRF.
+Batch 64 (32 with --final). Three seeds unless --seeds is given.
 
-Run:
+Run (as reported in the paper):
     python notebooks/09_pieces_234.py --piece3
-    python notebooks/09_pieces_234.py --piece2
-    python notebooks/09_pieces_234.py --piece4
-    python notebooks/09_pieces_234.py --final --lambda 0.3 --loss focal
+    python notebooks/09_pieces_234.py --piece2 --seeds 1 2 3 4 5
+    python notebooks/09_pieces_234.py --piece4 --lambda 0.3 --exclude-sold --seeds 1 2 3 4 5
 """
 import sys, os, csv, argparse, statistics
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -67,8 +66,6 @@ p.add_argument("--epochs", type=int, default=60)
 p.add_argument("--patience", type=int, default=12)
 p.add_argument("--batch-size", type=int, default=None)
 p.add_argument("--crf", action="store_true", help="force CRF on (off by default)")
-p.add_argument("--owner", type=str, default=os.environ.get("OWNER", "unknown"),
-               help="label recorded in every results row")
 args = p.parse_args()
 
 if not any([args.piece2, args.piece3, args.piece4, args.final]):
@@ -90,7 +87,7 @@ USE_CRF = args.crf
 # ==========================================================================
 rule("0. SETUP")
 device = get_device()
-print(f"experiment: {PIECE.upper()}   owner: {args.owner}")
+print(f"experiment: {PIECE.upper()}")
 print(f"device {device}   seeds {SEEDS}   batch {BATCH}   crf {USE_CRF}")
 
 train_full = load_sold("train")
@@ -137,7 +134,7 @@ def build(loss_kind="cross_entropy", sentence_head=False):
 
 def log(tag, seed, val_f1, s, secs, params, loss_kind=None, lam=None):
     os.makedirs("results", exist_ok=True)
-    fields = ["piece", "owner", "tag", "loss", "lambda", "distill", "uncertainty",
+    fields = ["piece", "tag", "loss", "lambda", "distill", "uncertainty",
               "crf", "minimal", "batch", "seed", "seconds", "trainable", "val_f1",
               "test_p", "test_r", "test_f1"]
     new = not os.path.exists(CSV_PATH)
@@ -145,7 +142,7 @@ def log(tag, seed, val_f1, s, secs, params, loss_kind=None, lam=None):
         w = csv.DictWriter(fh, fieldnames=fields)
         if new:
             w.writeheader()
-        w.writerow({"piece": PIECE, "owner": args.owner,
+        w.writerow({"piece": PIECE,
                     "tag": tag,
                     "loss": args.loss if loss_kind is None else loss_kind,
                     "lambda": args.lam if lam is None else lam,

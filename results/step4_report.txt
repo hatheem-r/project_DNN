@@ -16,8 +16,7 @@ parameters:
   embedding                     8,536,800
   non_embedding_trainable         187,658
 
-Compare with XLM-R-large at about 560,000,000 parameters. The efficiency
-claim in the paper rests on these numbers, so record them.
+For comparison, XLM-R-large has about 559 million parameters.
 
 ========================================================================
 1. TRAIN OVER SEEDS
@@ -166,23 +165,20 @@ per-seed test F1: 0.5904, 0.5490, 0.5545, 0.5740, 0.5823
 mean training time: 873s per seed
 
 ========================================================================
-3. DID WE HIT THE TARGET?
+3. COMPARISON WITH PUBLISHED RESULTS
 ========================================================================
 
 our BiLSTM + fastText        0.5701
-published BiLSTM + fastText  0.60     <- the Phase 1 target
-our word-list baseline       0.6521   <- the real floor
+published BiLSTM + fastText  0.60
+our word-list baseline       0.6521
 published SinBERT            0.62
 published XLM-R              0.72
 
-PASS. Reproduction is in range. Phase 1 exit criterion met.
+Within 0.03 of the published 0.60.
 
-NOTE: the model at 0.5701 does NOT beat the word list at 0.6521. That is
-expected at Phase 1 - the baseline is a faithful reproduction, not our
-contribution. Phase 2 is where we beat it.
 
 ========================================================================
-4. FOR THE README
+4. SUMMARY
 ========================================================================
 
 model                 BiLSTM + fastText + CRF

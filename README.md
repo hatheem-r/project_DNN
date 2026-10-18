@@ -56,7 +56,15 @@ python notebooks/03_embeddings.py        # writes artifacts/embedding_matrix.npy
 | `runners/` | Kaggle and Colab notebooks that clone this repository and run the scripts on a free GPU |
 | `results/` | logs of every run reported in the paper, plus executed runner notebooks |
 | `tests/` | metric and subword-alignment tests |
-| `docs/development_log.md` | the project's working notes |
+
+## Naming
+
+Script, flag and log names follow the project's internal stages. Steps 1-8 are
+the numbered scripts. Phase 1 is the reproduction of the word-level baseline
+(Steps 1-5); Phase 2 covers the subword model and later experiments. Within
+Phase 2, Piece 1 is the subword channel, Piece 2 the sentence head
+(`--piece2`), Piece 3 the balanced losses (`--piece3`) and Piece 4 distillation
+(`--piece4`).
 
 ## Two protocols
 
@@ -84,11 +92,12 @@ python notebooks/03_embeddings.py        # writes artifacts/embedding_matrix.npy
 | Table III: fastText subword vectors | `runners/fasttext_timing_kaggle.ipynb` (`12_fasttext_oov.py`, then `07_subword_model.py --matrix ... --open-vocab`) | `fasttext_oov_prep.txt`, `extra_bilstm_word_ft*.txt` |
 | Table IV, Fig. 2: errors by word familiarity | `python notebooks/10_analysis.py --errors` and `--errors --word-only` | `error_analysis.txt`, `error_analysis_wordonly.txt` |
 | Table V: losses | `python notebooks/09_pieces_234.py --piece3` | `piece3_report.txt` |
-| Table V: sentence head | `python notebooks/09_pieces_234.py --piece2` | `piece2_report.txt` |
+| Table V: sentence head | `python notebooks/09_pieces_234.py --piece2 --seeds 1 2 3 4 5` | `piece2_report.txt` |
 | Table V: distillation | `python notebooks/09_pieces_234.py --piece4 --lambda 0.3 --exclude-sold --seeds 1 2 3 4 5` | `piece4_nosold_report.txt` |
 | Table VI: inference cost | `runners/fasttext_timing_kaggle.ipynb` (`10_analysis.py --efficiency --minimal`, `11_transformer_efficiency.py --all`) | `efficiency_minimal_*.txt`, `transformer_efficiency_*.txt` |
 
-`notebooks/12_fasttext_oov.py` needs the binary fastText model
+The three Table V experiments can also be run together on Colab with
+`runners/table5_colab.ipynb`. `notebooks/12_fasttext_oov.py` needs the binary fastText model
 (`cc.si.300.bin.gz`, 3.2 GB), which `runners/fasttext_timing_kaggle.ipynb`
 downloads. `results/piece4_report.txt` is an earlier distillation run that still
 contained the SemiSOLD tweets overlapping with SOLD; see `src/semisold.py`.

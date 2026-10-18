@@ -36,18 +36,11 @@ comparable to the baseline 0.5965.
   + subword channel             0.6012 +/- 0.0050
   change                        +0.0047
 
-  our word list                 0.6521   <- still the floor to beat
+  lexicon baseline                 0.6521
   published XLM-R               0.7200
 
   precision 0.7150   recall 0.5190
   Phase 1 was precision 0.7452, recall 0.4979.
 
   NO MEASURABLE EFFECT. +0.0047 is inside the noise (0.0103).
-  Report it as such. A careful null result on a low-resource
-  language is a legitimate finding, and hiding it is not an option.
-
-  ABLATION ROWS STILL OWED
-    --pooling mean            does piece ORDER matter?
-    --no-word-channel         is fastText still needed?
-  Both at 5 seeds, same settings.
 

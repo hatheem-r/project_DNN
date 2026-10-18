@@ -94,10 +94,10 @@ COMPARISON
 
   change from more data:       +0.0118
 
-More data helped, as expected. Report this as the final Phase 1 baseline.
+More training data improved test F1.
 
 ========================================================================
-3. FINAL PHASE 1 BASELINE - FOR THE README
+3. FINAL BASELINE
 ========================================================================
 
 model                 BiLSTM + fastText + CRF
@@ -114,6 +114,4 @@ TEST OFFENSIVE F1     0.5965 +/- 0.0103
 
 parameters            10,089,458 total, 187,658 trainable
 time                  1468s per seed on mps
-
-PHASE 2 MUST BEAT: 0.6521
 

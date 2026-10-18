@@ -202,6 +202,4 @@ TEST OFFENSIVE F1     {f1:.4f} +/- {agg['offensive_f1']['std']:.4f}
 
 parameters            {params['total']:,} total, {params['trainable']:,} trainable
 time                  {statistics.mean(times):.0f}s per seed on {device}
-
-PHASE 2 MUST BEAT: {max(f1, 0.6521):.4f}
 """)

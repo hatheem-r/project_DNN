@@ -93,8 +93,7 @@ print("\nparameters:")
 for k, v in model_fn().count_parameters().items():
     print(f"  {k:<26} {v:>12,}")
 print("""
-Compare with XLM-R-large at about 560,000,000 parameters. The efficiency
-claim in the paper rests on these numbers, so record them.""")
+For comparison, XLM-R-large has about 559 million parameters.""")
 
 
 # ==========================================================================
@@ -151,37 +150,22 @@ print(f"mean training time: {statistics.mean(times):.0f}s per seed")
 
 
 # ==========================================================================
-rule("3. DID WE HIT THE TARGET?")
+rule("3. COMPARISON WITH PUBLISHED RESULTS")
 f1 = agg_test["offensive_f1"]["mean"]
 print(f"""
 our BiLSTM + fastText        {f1:.4f}
-published BiLSTM + fastText  0.60     <- the Phase 1 target
-our word-list baseline       0.6521   <- the real floor
+published BiLSTM + fastText  0.60
+our lexicon baseline         0.6521
 published SinBERT            0.62
 published XLM-R              0.72
 """)
 
 if 0.57 <= f1 <= 0.63:
-    print("PASS. Reproduction is in range. Phase 1 exit criterion met.")
+    print("Within 0.03 of the published 0.60.")
 elif f1 > 0.63:
-    print("ABOVE the published number. Good, but check for leakage before")
-    print("celebrating: is the vocabulary built from train only? Is test")
-    print("untouched during training and model selection?")
+    print("Above the published number by more than 0.03.")
 else:
-    print("BELOW range. Work through these in order before changing the model:")
-    print("  1. Is the model predicting anything? Check precision/recall are")
-    print("     not both 0 - that means it collapsed to all-negative. Try")
-    print("     --weighted.")
-    print("  2. Are labels aligned with tokens? Re-check Step 1 section 4.")
-    print("  3. Is padding excluded from the loss and the metric?")
-    print("  4. Try --no-crf to isolate whether the CRF is the problem.")
-    print("  5. Try more epochs or a different learning rate.")
-
-if f1 < 0.6521:
-    print(f"""
-NOTE: the model at {f1:.4f} does NOT beat the word list at 0.6521. That is
-expected at Phase 1 - the baseline is a faithful reproduction, not our
-contribution. Phase 2 is where we beat it.""")
+    print("Below the published number by more than 0.03.")
 
 
 # ==========================================================================

@@ -1,10 +1,14 @@
 """
-The baseline model: BiLSTM (+ optional CRF).
+The tagger: word channel, optional subword channel, sentence-level encoder,
+linear layer and optional CRF.
 
-This reproduces the architecture described in the SOLD paper: an embedding
-layer, one bidirectional LSTM with 64 units, and a CRF on top.
+With the subword channel off, it is the SOLD paper's BiLSTM baseline: an
+embedding layer, one bidirectional LSTM with 64 units, and a CRF on top.
+SubwordEncoder adds the subword channel; the sentence-level encoder can be the
+BiLSTM (reported model) or a small Transformer; an optional sentence head
+supports the auxiliary-loss and distillation experiments.
 
-WHAT EACH PIECE DOES
+WHAT EACH PART DOES
 
   Embedding layer
       Looks up the 300-number vector for each word id. Frozen by default,
@@ -26,9 +30,8 @@ WHAT EACH PIECE DOES
   CRF (optional)
       Without it, each word is labelled independently. A CRF instead scores
       the whole label SEQUENCE, learning that offensive words come in runs
-      and that some label transitions are unlikely. Usually worth a point
-      or two on span-style tasks. Build without it first, confirm the
-      pipeline works, then switch it on and check the score goes up.
+      and that some label transitions are unlikely. With the subword channel
+      it made no measurable difference (results/step7b_nocrf.txt).
 """
 
 from __future__ import annotations
@@ -55,10 +58,11 @@ class SubwordEncoder(nn.Module):
 
     WHY THIS EXISTS
     ---------------
-    Measured in Step 3: 48.7% of distinct test words never appeared in training,
-    and 14.3% of test word occurrences are unseen. For those words the fastText
-    channel holds a random vector - pure noise. But their PIECES were seen, so
-    this channel can still say something useful.
+    48.7% of distinct test words never appeared in training, and 14.3% of test
+    word occurrences are unseen. The word channel maps those to one shared
+    unknown-word vector, and about 18% of training words have no fastText vector
+    and get a random one. Their PIECES were usually seen, so this channel can
+    still carry information.
 
     Measured in Step 6: unseen words are split into 2.5-4 pieces, and 75-83% of
     them contain a piece that also occurs inside a training word.
@@ -181,10 +185,10 @@ class BiLSTMTagger(nn.Module):
             self.embedding.weight.data.copy_(torch.from_numpy(embedding_matrix))
             self.embedding.weight.requires_grad = not freeze_embeddings
 
-        # The two channels are CONCATENATED, not swapped. For the 80.8% of words
-        # with a real fastText vector the word channel already works; for the
-        # rest it is noise and the subword channel carries the signal. Keeping
-        # both lets the model fall back rather than lose what works.
+        # The two channels are CONCATENATED, not swapped. For the ~81% of words
+        # with a real fastText vector the word channel carries information; for
+        # the rest the subword channel does. Keeping both lets the model use
+        # either.
         self.subword = None
         lstm_input = dim if use_word_channel else 0
         if n_pieces > 0:
@@ -230,15 +234,13 @@ class BiLSTMTagger(nn.Module):
         self.num_labels = num_labels
         self.token_loss = token_loss
 
-        # PIECE 2. A second output on the SAME encoder: is the whole tweet
-        # offensive? Two views of one phenomenon, so forcing one BiLSTM to serve
-        # both regularises it - valuable when token labels are only 4% positive
-        # and we have 7,500 tweets.
+        # Optional sentence head: a second output on the SAME encoder that
+        # predicts whether the whole tweet is offensive, trained as an auxiliary
+        # loss. (In our experiments it did not improve token F1.)
         #
-        # It is also the docking port for Piece 4. SemiSOLD's 145k extra tweets
-        # carry SENTENCE-level teacher scores only, with no token labels, so
-        # distillation cannot reach the token head directly. It trains this
-        # head, and the shared encoder carries the benefit across.
+        # It is also what distillation trains: SemiSOLD's teacher scores are
+        # sentence level, with no token labels, so distillation reaches the
+        # token head only through the shared encoder.
         self.sentence_head = None
         if sentence_head:
             self.sentence_head = nn.Sequential(
@@ -347,7 +349,7 @@ class BiLSTMTagger(nn.Module):
     # ------------------------------------------------------------------
     def distillation_loss(self, ids, mask, lengths, soft_targets,
                           piece_ids=None, piece_lens=None, temperature: float = 1.0):
-        """PIECE 4. Learn from SemiSOLD's saved teacher scores.
+        """Learn from SemiSOLD's saved teacher scores (distillation).
 
         soft_targets is P(offensive) per tweet, precomputed by the SOLD authors
         in 2022 and stored as columns in a public file. No pretrained language

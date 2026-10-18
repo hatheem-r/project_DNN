@@ -11,7 +11,7 @@ Reimplemented from the official SOLD repository:
     experiments/token_level/sinhala_mudes.py (how it is called)
     https://github.com/Sinhala-NLP/SOLD
 
-Three facts established by reading that code:
+Facts established by reading that code:
 
 1. EVALUATION IS POOLED, NOT PER-SENTENCE.
    sinhala_mudes.py builds one long DataFrame with a row per token across

@@ -2,7 +2,7 @@
 ========================================================================
 0. SETUP
 ========================================================================
-experiment: PIECE3   owner: yusri
+experiment: PIECE3
 device cuda   seeds [1, 2, 3]   batch 64   crf False
 train-part 6,000  val 1,500  test 2,500
 fitting on 6,000 tweets (train-part)
@@ -59,21 +59,5 @@ cross_entropy       0.7039   0.0053    0.7146    0.6938
 focal               0.6978   0.0046    0.6677    0.7309
 weighted            0.5764   0.0271    0.4294    0.8794
 
-best (dice) vs cross_entropy: +0.0059  modest gain, report with the std
-
-If the answer is null, that is a real finding and pairs with the CRF result:
-once the input representation is fixed, the downstream corrections stop
-mattering. Report it, do not bury it.
-
-========================================================================
-WHAT TO COMMIT
-========================================================================
-  results/results_piece3.csv
-  results/piece3_report.txt   (if you redirected stdout there)
-
-Commit ONLY those two files. Do not commit artifacts/ or embeddings/.
-
-    git add results/results_piece3.csv results/piece3_report.txt
-    git commit -m "piece3 results (yusri)"
-    git pull --rebase && git push
+best (dice) vs cross_entropy: +0.0059  modest gain
 

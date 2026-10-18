@@ -2,7 +2,7 @@
 ========================================================================
 0. SETUP
 ========================================================================
-experiment: PIECE4   owner: kaggle
+experiment: PIECE4
 device cuda   seeds [1, 2, 3, 4, 5]   batch 64   crf False
 train-part 6,000  val 1,500  test 2,500
 fitting on 6,000 tweets (train-part)
@@ -15,19 +15,6 @@ PIECE 4 - OFFLINE DISTILLATION FROM SemiSOLD
 Loading SemiSOLD (145k tweets with saved teacher scores)...
 
 
-
-Generating train split:   0%|          | 0/145994 [00:00<?, ? examples/s]
-Generating train split:   7%|▋         | 10000/145994 [00:00<00:01, 75007.98 examples/s]
-Generating train split:  14%|█▎        | 20000/145994 [00:00<00:01, 87388.86 examples/s]
-Generating train split:  21%|██        | 30000/145994 [00:00<00:01, 91248.02 examples/s]
-Generating train split:  27%|██▋       | 40000/145994 [00:00<00:01, 93842.47 examples/s]
-Generating train split:  41%|████      | 60000/145994 [00:00<00:00, 98059.14 examples/s]
-Generating train split:  48%|████▊     | 70000/145994 [00:00<00:00, 98529.13 examples/s]
-Generating train split:  55%|█████▍    | 80000/145994 [00:00<00:00, 97953.73 examples/s]
-Generating train split:  68%|██████▊   | 100000/145994 [00:01<00:00, 100728.39 examples/s]
-Generating train split:  82%|████████▏ | 120000/145994 [00:01<00:00, 103207.83 examples/s]
-Generating train split:  96%|█████████▌| 140000/145994 [00:01<00:00, 105434.92 examples/s]
-Generating train split: 100%|██████████| 145994/145994 [00:01<00:00, 100554.42 examples/s]
 rows: 145,994
 columns: ['post_id', 'text', 'xlmr', 'xlmt', 'mbert', 'sinbert', 'lstm_ft', 'cnn_ft', 'lstm_cbow', 'cnn_cbow', 'lstm_sl', 'cnn_sl', 'svm']
 teacher score columns found: 11 of 11  ['xlmr', 'xlmt', 'mbert', 'sinbert', 'lstm_ft', 'cnn_ft', 'lstm_cbow', 'cnn_cbow', 'lstm_sl', 'cnn_sl', 'svm']
@@ -77,22 +64,5 @@ PIECE 4 RANKING
        0.5    0.7038   0.0052    0.7572    0.6579
        1.0    0.7056   0.0065    0.7500    0.6666
 
-best weight=1.0 vs no distillation: +0.0090  modest gain, report with the std
-
-The authors found lightweight models gain most from this augmentation
-(BiLSTM+CBOW +2.78%, XLM-R +0.63%). If we see nothing, one likely reason is
-that Piece 1 already moved us into the "already strong" regime where they
-observed little benefit. Say that, with their numbers cited.
-
-========================================================================
-WHAT TO COMMIT
-========================================================================
-  results/results_piece4_nosold.csv
-  results/piece4_report.txt   (if you redirected stdout there)
-
-Commit ONLY those two files. Do not commit artifacts/ or embeddings/.
-
-    git add results/results_piece4_nosold.csv results/piece4_report.txt
-    git commit -m "piece4 results (kaggle)"
-    git pull --rebase && git push
+best weight=1.0 vs no distillation: +0.0090  modest gain
 
