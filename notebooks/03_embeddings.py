@@ -9,8 +9,7 @@ BEFORE RUNNING: download the Sinhala fastText vectors.
     mkdir -p embeddings && cd embeddings
     wget https://dl.fbaipublicfiles.com/fasttext/vectors-crawl/cc.si.300.vec.gz
 
-  Do NOT unzip it - the loader reads .gz directly.
-  Add embeddings/ to .gitignore. Never commit a multi-hundred-MB file.
+  Do not unzip it - the loader reads .gz directly.
 
   If that URL has moved, get the current link from the fasttext.cc page
   above, or use the HuggingFace mirror facebook/fasttext-si-vectors.
@@ -102,7 +101,7 @@ as the real ones. This copies get_emb_matrix() in the SOLD codebase exactly.""")
 
 
 # ==========================================================================
-rule("4. COVERAGE ON EACH SPLIT   <-- THE NUMBERS FOR THE PAPER")
+rule("4. COVERAGE ON EACH SPLIT")
 print("""'type' = distinct words.  'token' = word occurrences.
 in_vocab   = the word has its own row in our vocabulary
 has_vector = that row holds a REAL fastText vector, not a random one
@@ -129,9 +128,7 @@ Almost half of all DISTINCT test words are new.
 
 This is the whole argument for the subword component in Phase 2. If the
 model could look INSIDE a word - at its pieces - it could still make sense
-of a word form it has never met, because it would recognise the root.
-
-Write these numbers into the README and into the paper.""")
+of a word form it has never met, because it would recognise the root.""")
 
 
 # ==========================================================================
@@ -191,12 +188,10 @@ with open("artifacts/vocab.txt", "w", encoding="utf-8") as fh:
         fh.write(f"{w}\t{i}\n")
 print("  artifacts/embedding_matrix.npy")
 print("  artifacts/vocab.txt")
-print("\nAdd artifacts/ and embeddings/ to .gitignore - they are large and")
-print("regenerable. The CODE is what gets committed, not the outputs.")
 
 
 # ==========================================================================
-rule("8. SUMMARY FOR THE README")
+rule("8. SUMMARY")
 print(f"""
 embedding file        {os.path.basename(VEC_PATH)}
 dimension             {dim}

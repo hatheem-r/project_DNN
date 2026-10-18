@@ -18,12 +18,9 @@ The SOLD authors say so themselves: their co-learning approach "does not readily
 apply" to token classification because the label space grows exponentially with
 sequence length, so they never trained supervised token models on augmented data.
 
-So distillation cannot teach our token head directly. It teaches the SENTENCE
-head from Piece 2, and because both heads sit on one shared BiLSTM, a better
-sentence head pulls the shared representation in a better direction.
-
-**Piece 2 is what makes Piece 4 reachable at all.** That is the spine of the
-contribution, not two independent tricks.
+So distillation cannot teach our token head directly. It teaches the sentence
+head (09_pieces_234.py --piece2), and because both heads sit on one shared
+BiLSTM, the sentence-level signal reaches the shared representation.
 
 UNCERTAINTY FILTERING - USE THE AUTHORS' OWN FINDING
 ----------------------------------------------------
@@ -31,9 +28,11 @@ They filtered by disagreement among the top models and found a standard
 deviation threshold of 0.1 optimal (~8,474 instances). A looser 0.15 added
 47,746 instances but so much noise that results DROPPED. We default to 0.1.
 
-They also found lightweight models gain most: BiLSTM+CBOW gained +2.78% Macro F1
-from augmentation while XLM-R gained +0.63%, because results do not improve much
-when the classifier is already strong. Ours is the lightweight kind.
+OVERLAP WITH SOLD
+-----------------
+The public release contains nearly every SOLD training and test tweet, with
+different spacing and punctuation. drop_overlap() removes them (10,087 rows);
+09_pieces_234.py --exclude-sold applies it before filtering.
 """
 
 from __future__ import annotations

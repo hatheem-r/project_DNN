@@ -105,9 +105,7 @@ for name, df in [("train", train), ("test", test)]:
 print("""
 EXPECTED: every NOT row is empty. Any OFF row that is ALSO empty is an
 annotation anomaly - the tweet was judged offensive but no tokens were
-highlighted. Count them, note the number in the README, and decide whether
-to keep them (they become all-negative training rows) or drop them.
-DECISION REQUIRED - write it down either way.
+highlighted. We keep them; they become all-negative token rows.
 """)
 
 
@@ -180,7 +178,7 @@ cover = {L: (train["n_tokens"] <= L).mean() for L in (16, 24, 32, 48, 64)}
 print("\ncoverage if max_len set to:")
 for L, c in cover.items():
     print(f"  {L:>3}: {c:.2%} of train tweets fit without truncation")
-print("\nPick the smallest max_len covering >=99% and record it in configs/baseline.yaml.")
+print("\nNo truncation is applied; each batch is padded to its longest tweet.")
 
 
 # ==========================================================================
@@ -250,9 +248,9 @@ for i, (_, r) in enumerate(sample.iterrows(), 1):
 
 
 # ==========================================================================
-# 12. SUMMARY FOR THE README
+# 12. SUMMARY
 # ==========================================================================
-rule("12. COPY THESE NUMBERS INTO YOUR README")
+rule("12. SUMMARY")
 
 tt_train = train["n_tokens"].sum()
 tp_train = train["n_offensive_tokens"].sum()

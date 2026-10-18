@@ -1,10 +1,10 @@
 """
-Error analysis and efficiency measurement - the last two gaps in the paper.
+Error analysis and efficiency measurement.
 
     --errors       train one seed, dump test predictions against gold, and
-                   produce an error breakdown plus example tweets for Section 7.7
-    --efficiency   measure parameters, inference throughput and peak memory
-                   for Section 9
+                   produce an error breakdown by word familiarity plus example
+                   tweets
+    --efficiency   measure parameters, inference throughput, latency and memory
 
 Run:
     python notebooks/10_analysis.py --errors     > results/error_analysis.txt
@@ -17,7 +17,7 @@ WHAT THIS SCRIPT CANNOT DO FOR YOU
 ----------------------------------
 It prints the tweets, the gold spans and the predicted spans. Deciding WHY a
 miss happened - implicit offence, sarcasm, an unseen inflection, a plausible
-annotation disagreement - requires reading Sinhala. Section 7.7 needs a human.
+annotation disagreement - requires a reader of Sinhala.
 """
 import sys, os, argparse, time, json
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -54,9 +54,8 @@ ap.add_argument("--efficiency", action="store_true")
 ap.add_argument("--minimal", action="store_true",
                 help="analyse the subword-only model instead of word + subword")
 ap.add_argument("--word-only", action="store_true",
-                help="analyse the PHASE 1 BASELINE (no subword channel). Use this "
-                     "to get the seen/unseen breakdown for the baseline, which is "
-                     "what makes the Section 7.7 comparison meaningful.")
+                help="analyse the word-level baseline (no subword channel), for "
+                     "the seen/unseen comparison")
 ap.add_argument("--examples", type=int, default=24)
 ap.add_argument("--epochs", type=int, default=EPOCHS)
 ap.add_argument("--threads", type=int, default=0,
@@ -225,21 +224,9 @@ words, or has that gap closed?
     print(f"""
   seen minus unseen F1: {gap:+.4f}
 
-INTERPRET CAREFULLY, AND REPORT WHICHEVER IT IS.
-  A large positive gap means subwords narrowed the unseen-word problem but did
-  not solve it. Say that; it is an honest limitation and a clear direction for
-  future work.
-  A small gap means the mechanism claim is strongly supported.
-  Either way this number belongs in Section 7.7.
+For the same breakdown on the word-level baseline:
 
-TO MAKE THIS COMPARISON MEANINGFUL, run the SAME breakdown on the Phase 1
-baseline, which has no subword channel:
-
-    python notebooks/10_analysis.py --errors --word-only > results/error_analysis_wordonly.txt
-
-The unseen-bucket F1 from that run is the reference point. Our unseen F1 minus
-the baseline's unseen F1 is how much the subword channel actually bought on
-unseen words - which is the number the mechanism claim rests on.""")
+    python notebooks/10_analysis.py --errors --word-only > results/error_analysis_wordonly.txt""")
 
     # ------------------------------------------------------------------
     rule("3. THE MOST FREQUENT INDIVIDUAL ERRORS")
@@ -269,7 +256,7 @@ still missed it, the failure is contextual rather than lexical - which is a
 different and more interesting kind of error.""")
 
     # ------------------------------------------------------------------
-    rule("4. EXAMPLE TWEETS FOR SECTION 7.7")
+    rule("4. EXAMPLE TWEETS")
     print("Legend:  [word] correct hit   <word> false positive   {word} missed\n")
     cats = {"perfect": [], "over-flagged": [], "under-flagged": [], "mixed": []}
     per_cat = max(args.examples // 4, 1)
@@ -301,14 +288,6 @@ different and more interesting kind of error.""")
             print(f"    {' '.join(marked)}")
         print()
 
-    print("""NEXT STEP, AND IT NEEDS A HUMAN.
-
-Pick five to eight examples above and write Section 7.7. For each, say WHY the
-model behaved as it did: an unseen inflection of a known root, offence carried by
-context rather than any single word, sarcasm, or a plausible annotation
-disagreement. That judgement requires reading Sinhala and cannot be automated.
-
-Reviewers consistently reward this section and almost no student paper has one.""")
 
     with open(f"results/error_analysis_raw_{variant}.json", "w") as fh:
         json.dump({"gold": gold_all, "pred": pred_all,
@@ -319,7 +298,7 @@ Reviewers consistently reward this section and almost no student paper has one."
 
 # ==========================================================================
 if args.efficiency:
-    rule("EFFICIENCY MEASUREMENTS - FOR SECTION 9")
+    rule("EFFICIENCY MEASUREMENTS")
     model = get_model()
     model.eval()
 
@@ -440,11 +419,3 @@ size and dependencies (measured):
     with open(f"results/efficiency_{tag}.json", "w") as fh:
         json.dump(out, fh, indent=2)
     print(f"saved results/efficiency_{tag}.json")
-    print(f"""
-FOR THE PAPER.
-Report these as MEASURED and state the hardware and batch size ({BATCH}).
-Published transformer figures should be cited as parameter counts only, unless
-you time XLM-R yourself on the same GPU in inference-only mode. Loading a model
-to time its forward pass is not fine-tuning, so that comparison is available to
-you if you want a like-for-like throughput number - but say clearly which figures
-are measured and which are cited.""")

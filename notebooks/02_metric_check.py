@@ -16,10 +16,6 @@ NOT use its scores to CHOOSE anything. Choosing is done on validation.
   Baseline D (the word list) HAS settings: how strict the list should be,
   and how many times a word must appear before we trust it. Those are
   chosen on VALIDATION, then the single winner is run once on test.
-
-An earlier version of this file tried four word lists on test and reported
-the best (0.631). That was test-set tuning and the number was void. This
-version fixes it.
 """
 import sys, os, random
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -188,20 +184,17 @@ print("-" * 72)
 s_lex = lexicon_score(test, final_lex, gold_test)
 print(f"  precision {s_lex['offensive_precision']:.4f}")
 print(f"  recall    {s_lex['offensive_recall']:.4f}")
-print(f"  F1        {s_lex['offensive_f1']:.4f}   <- REPORT THIS")
+print(f"  F1        {s_lex['offensive_f1']:.4f}")
 print(f"\n  validation F1 was {best['f1']:.4f}, test F1 is {s_lex['offensive_f1']:.4f} "
       f"(gap {s_lex['offensive_f1'] - best['f1']:+.4f}).")
 print("  A small gap means validation predicts test well. A large gap means")
 print("  the validation split is too small or unlucky.")
-print("""
-DO NOT go back and try more settings to push this number up. That would be
-the same mistake the earlier version of this file made.""")
 
 
 # ==========================================================================
 # SUMMARY
 # ==========================================================================
-rule("SUMMARY - COPY INTO THE README")
+rule("SUMMARY")
 
 print(f"""
 Baselines on the SOLD test split, offensive-class F1:

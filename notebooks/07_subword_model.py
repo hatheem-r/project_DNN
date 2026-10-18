@@ -318,18 +318,14 @@ if args.sweep:
 GRAPHEME CONTROL (bpe_8000 vs unigram_8000, same vocabulary size)
   difference {d:+.4f}, pooled std {pooled:.4f}""")
         if abs(d) <= max(pooled, 1e-6):
-            print("  Inside the noise. Step 6's grapheme finding does not translate")
-            print("  into an F1 difference here. Report it as a tokenizer-quality")
-            print("  observation, NOT as an accuracy claim.")
+            print("  Within one pooled standard deviation: no measurable difference.")
         elif d > 0:
-            print("  BPE wins. The grapheme finding translates into accuracy.")
-            print("  This is a real result and belongs in the paper.")
+            print("  BPE scores higher.")
         else:
-            print("  Unigram wins despite breaking more graphemes. Report honestly -")
-            print("  root-sharing evidently matters more than grapheme integrity here.")
+            print("  Unigram scores higher.")
 
     print(f"""
-NEXT: run the winner with the frozen Phase 1 settings and score test once.
+Final run for the best setting:
 
     python notebooks/07_subword_model.py --final --sp {best[0]}
 """)
@@ -357,30 +353,17 @@ else:
   + subword channel             {f1:.4f} +/- {std:.4f}
   change                        {delta:+.4f}
 
-  our word list                 {WORDLIST_F1:.4f}   <- still the floor to beat
+  lexicon baseline              {WORDLIST_F1:.4f}
   published XLM-R               0.7200
 
   precision {ta['offensive_precision']['mean']:.4f}   recall {ta['offensive_recall']['mean']:.4f}
   Phase 1 was precision 0.7452, recall 0.4979.""")
 
     if delta > 2 * noise:
-        print(f"\n  CLEAR GAIN. {delta:+.4f} is more than twice the noise ({noise:.4f}).")
+        print(f"\n  Clear gain: {delta:+.4f}, more than twice the standard deviation ({noise:.4f}).")
     elif delta > noise:
-        print(f"\n  MODEST GAIN. {delta:+.4f} exceeds the noise ({noise:.4f}) but not by much.")
-        print("  Report with the standard deviation and do not overstate it.")
+        print(f"\n  Modest gain: {delta:+.4f}, more than one standard deviation ({noise:.4f}).")
     elif delta > -noise:
-        print(f"\n  NO MEASURABLE EFFECT. {delta:+.4f} is inside the noise ({noise:.4f}).")
-        print("  Report it as such. A careful null result on a low-resource")
-        print("  language is a legitimate finding, and hiding it is not an option.")
+        print(f"\n  No measurable effect: {delta:+.4f}, within one standard deviation ({noise:.4f}).")
     else:
-        print(f"\n  IT HURT. {delta:+.4f}. Report honestly, then investigate:")
-        print("    - did recall rise while precision collapsed?")
-        print("    - is the subword channel too large relative to 6,000 tweets?")
-        print("    - try --pooling mean, or a smaller --subword-dim")
-
-    print(f"""
-  ABLATION ROWS STILL OWED
-    --pooling mean            does piece ORDER matter?
-    --no-word-channel         is fastText still needed?
-  Both at 5 seeds, same settings.
-""")
+        print(f"\n  Lower: {delta:+.4f}.")

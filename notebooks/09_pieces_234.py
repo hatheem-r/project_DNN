@@ -34,8 +34,8 @@ from train import train_one_seed, evaluate, get_device
 from metrics import aggregate_seeds
 
 VEC_PATH = os.environ.get("SOLD_VECTORS", "embeddings/cc.si.300.vec.gz")
-# CSV path is per-piece so three people can run in parallel and commit
-# without colliding. Set below once the mode is known.
+# One results CSV per experiment, so experiments can run in parallel.
+# Set below once the mode is known.
 CSV_PATH = None
 SP_TYPE, SP_VOCAB = "bpe", 1000
 PIECE1_VAL = 0.7083     # bpe_1000 both channels, validation
@@ -68,7 +68,7 @@ p.add_argument("--patience", type=int, default=12)
 p.add_argument("--batch-size", type=int, default=None)
 p.add_argument("--crf", action="store_true", help="force CRF on (off by default)")
 p.add_argument("--owner", type=str, default=os.environ.get("OWNER", "unknown"),
-               help="your name - recorded in every row so results are traceable")
+               help="label recorded in every results row")
 args = p.parse_args()
 
 if not any([args.piece2, args.piece3, args.piece4, args.final]):
@@ -92,9 +92,6 @@ rule("0. SETUP")
 device = get_device()
 print(f"experiment: {PIECE.upper()}   owner: {args.owner}")
 print(f"device {device}   seeds {SEEDS}   batch {BATCH}   crf {USE_CRF}")
-if args.owner == "unknown":
-    print("\nWARNING: no --owner given. Pass --owner YourName so the rows in")
-    print("the results file say who ran them.")
 
 train_full = load_sold("train")
 test = load_sold("test")
@@ -203,12 +200,12 @@ def verdict(name, got, ref, noise):
     d = got - ref
     noise = max(noise, 1e-4)   # zero std would make an exact tie read as "hurt"
     if d > 2 * noise:
-        return f"{name}: {d:+.4f}  CLEAR GAIN"
+        return f"{name}: {d:+.4f}  clear gain"
     if d > noise:
-        return f"{name}: {d:+.4f}  modest gain, report with the std"
+        return f"{name}: {d:+.4f}  modest gain"
     if d > -noise:
-        return f"{name}: {d:+.4f}  NO MEASURABLE EFFECT - report the null"
-    return f"{name}: {d:+.4f}  HURT - report honestly"
+        return f"{name}: {d:+.4f}  no measurable effect"
+    return f"{name}: {d:+.4f}  lower"
 
 
 # ==========================================================================
@@ -318,11 +315,6 @@ the sentence head, and the shared encoder carries any benefit to the tokens.""")
     print("\n" + verdict(f"best weight={best[0]} vs no distillation",
                          best[1]["offensive_f1"]["mean"], base["mean"],
                          max(base["std"], best[1]["offensive_f1"]["std"])))
-    print("""
-The authors found lightweight models gain most from this augmentation
-(BiLSTM+CBOW +2.78%, XLM-R +0.63%). If we see nothing, one likely reason is
-that Piece 1 already moved us into the "already strong" regime where they
-observed little benefit. Say that, with their numbers cited.""")
 
 # ==========================================================================
 else:
@@ -352,16 +344,4 @@ else:
     print(verdict("vs Piece 1", f1, PIECE1_TEST,
                   max(ta["offensive_f1"]["std"], 0.0066)))
 
-print(f"""
-========================================================================
-WHAT TO COMMIT
-========================================================================
-  {CSV_PATH}
-  results/{PIECE}_report.txt   (if you redirected stdout there)
-
-Commit ONLY those two files. Do not commit artifacts/ or embeddings/.
-
-    git add {CSV_PATH} results/{PIECE}_report.txt
-    git commit -m "{PIECE} results ({args.owner})"
-    git pull --rebase && git push
-""")
+print(f"\nper-seed rows appended to {CSV_PATH}")

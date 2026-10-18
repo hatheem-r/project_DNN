@@ -3,7 +3,7 @@
 # This file is the verbatim stdout of
 #     python notebooks/08_final_model.py --both
 # run on a Colab T4 on 2026-09-05, extracted from cell 16 of the executed
-# notebook phase2_final_model_colab.ipynb. The Colab session disconnected
+# notebook results/final_model_colab_run.ipynb. The Colab session disconnected
 # before the download cell, so the original tee'd file was lost with the
 # session; the notebook retained the output.
 #

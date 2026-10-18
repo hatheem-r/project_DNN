@@ -1,7 +1,7 @@
 # RECOVERED TRANSCRIPT — not a fresh run
 # Verbatim stdout (tail) of
 #     python notebooks/08_final_model.py --model full --pooling mean
-# from cell 18 of the executed notebook phase2_final_model_colab.ipynb.
+# from cell 18 of the executed notebook results/final_model_colab_run.ipynb.
 # This is the mean-pooling ablation. See step8_final.txt for provenance.
 
 Published SinBERT                    0.6200                                   ~110M

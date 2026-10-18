@@ -180,14 +180,13 @@ COMPARISON
 """)
 
 if f1 >= 0.5847:
-    print("More data helped, as expected. Report this as the final Phase 1 baseline.")
+    print("More training data improved test F1.")
 else:
-    print("More data did not help. Report it honestly anyway - do not go back and")
-    print("tune. A null result here is information, not a failure.")
+    print("More training data did not improve test F1.")
 
 
 # ==========================================================================
-rule("3. FINAL PHASE 1 BASELINE - FOR THE README")
+rule("3. FINAL BASELINE")
 print(f"""
 model                 BiLSTM + fastText{' + CRF' if use_crf else ''}
 trained on            {len(train_full):,} tweets (full official train split)

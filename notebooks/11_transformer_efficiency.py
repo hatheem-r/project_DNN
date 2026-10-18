@@ -1,6 +1,5 @@
 """
-Transformer inference efficiency, for the Section 9 comparison the lecturer asked
-for. Measures the same quantities as notebooks/10_analysis.py --efficiency, on
+Transformer inference efficiency. Measures the same quantities as notebooks/10_analysis.py --efficiency, on
 the same hardware and same test split, so the two tables sit side by side.
 
 WHAT THIS DOES NOT DO
@@ -197,10 +196,8 @@ for name, hf_id in todo:
         results.append(bench_one(name, hf_id, test_texts, device, args.latency_tweets))
     except Exception as e:
         print(f"\n  FAILED to benchmark {name}: {e}")
-        print("  Report this error to the group rather than skipping silently -")
-        print("  it may mean the model needs a different loading class.")
 
-rule("SUMMARY - FOR SECTION 9")
+rule("SUMMARY")
 print(f"device {device}, {torch.get_num_threads()} CPU threads, "
       f"{len(test_texts):,} tweets, batch {BATCH}")
 print(f"{'model':<12} {'params':>14} {'MB':>8} {'tweets/s':>10} {'ms/tweet':>10} "
@@ -223,4 +220,3 @@ tag = f"{device.type}_t{torch.get_num_threads()}" + (f"_n{args.limit}" if args.l
 with open(f"results/transformer_efficiency_{tag}.json", "w") as fh:
     json.dump(results, fh, indent=2)
 print(f"saved results/transformer_efficiency_{tag}.json")
-print("\nAlso commit the printed summary table above (redirect stdout to a .txt file).")
