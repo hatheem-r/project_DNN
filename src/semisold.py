@@ -18,12 +18,9 @@ The SOLD authors say so themselves: their co-learning approach "does not readily
 apply" to token classification because the label space grows exponentially with
 sequence length, so they never trained supervised token models on augmented data.
 
-So distillation cannot teach our token head directly. It teaches the SENTENCE
-head from Piece 2, and because both heads sit on one shared BiLSTM, a better
-sentence head pulls the shared representation in a better direction.
-
-**Piece 2 is what makes Piece 4 reachable at all.** That is the spine of the
-contribution, not two independent tricks.
+So distillation cannot teach our token head directly. It teaches the sentence
+head (09_pieces_234.py --piece2), and because both heads sit on one shared
+BiLSTM, the sentence-level signal reaches the shared representation.
 
 UNCERTAINTY FILTERING - USE THE AUTHORS' OWN FINDING
 ----------------------------------------------------
@@ -31,14 +28,18 @@ They filtered by disagreement among the top models and found a standard
 deviation threshold of 0.1 optimal (~8,474 instances). A looser 0.15 added
 47,746 instances but so much noise that results DROPPED. We default to 0.1.
 
-They also found lightweight models gain most: BiLSTM+CBOW gained +2.78% Macro F1
-from augmentation while XLM-R gained +0.63%, because results do not improve much
-when the classifier is already strong. Ours is the lightweight kind.
+OVERLAP WITH SOLD
+-----------------
+The public release contains nearly every SOLD training and test tweet, with
+different spacing and punctuation. drop_overlap() removes them (10,087 rows);
+09_pieces_234.py --exclude-sold applies it before filtering.
 """
 
 from __future__ import annotations
 
-from typing import List, Optional, Sequence
+import re
+import unicodedata
+from typing import Iterable, List, Optional, Sequence
 
 import numpy as np
 import pandas as pd
@@ -60,6 +61,28 @@ TOP_TEACHERS = ["xlmr", "xlmt", "sinbert"]
 def load_semisold() -> pd.DataFrame:
     from datasets import Dataset as HFDataset, load_dataset
     return HFDataset.to_pandas(load_dataset(DATASET_NAME, split="train"))
+
+
+def match_key(text: str) -> str:
+    """A tweet with user mentions, URLs, punctuation, symbols and whitespace
+    removed. SOLD stores tokenised text and SemiSOLD raw text, so the same tweet
+    differs in spacing and punctuation between the two. The zero-width joiner is
+    kept because it is part of Sinhala letters."""
+    s = re.sub(r"@USER|URL|https?\S+", "", str(text))
+    return "".join(c for c in s
+                   if c == "‍" or not (c.isspace() or unicodedata.category(c)[0] in "PSZC"))
+
+
+def drop_overlap(df: pd.DataFrame, sold_texts: Iterable[str],
+                 text_col: str = "text") -> pd.DataFrame:
+    """Remove SemiSOLD rows that are SOLD tweets. The public SemiSOLD release
+    contains nearly all SOLD training and test tweets."""
+    keys = {match_key(t) for t in sold_texts}
+    keys.discard("")
+    hit = df[text_col].map(match_key).isin(keys)
+    print(f"  removed {int(hit.sum()):,} SemiSOLD rows that match a SOLD tweet; "
+          f"{int((~hit).sum()):,} remain")
+    return df[~hit].reset_index(drop=True)
 
 
 def describe(df: pd.DataFrame) -> None:

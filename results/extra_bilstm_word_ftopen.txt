@@ -1,0 +1,53 @@
+$ python notebooks/07_subword_model.py --final --sp none --matrix artifacts/embedding_matrix_ftopen.npy --open-vocab --tag bilstm_word_ftopen --csv results/results_fasttext_oov.csv 
+
+========================================================================
+0. SETUP
+========================================================================
+device cuda   mode FINAL (scores test)
+seeds [1, 2, 3, 4, 5]   batch 32   crf True   epochs<=60 patience 12
+embedding matrix: artifacts/embedding_matrix_ftopen.npy   (open vocabulary)
+
+row-level results append to: results/results_fasttext_oov.csv
+this readable report goes to stdout - redirect it to results/
+
+train-part 6,000  val 1,500  test 2,500
+vocab 40,171   embedding matrix (40171, 300)
+
+========================================================================
+1. FINAL RUN - none
+========================================================================
+Frozen Phase 1 settings (batch 32, CRF on) so the number is directly
+comparable to the baseline 0.5965.
+
+--- none  (0 pieces)  encoder bilstm  
+    tag: bilstm_word_ftopen
+    trainable 187,658  (subword channel 0, lstm input 300)
+    seed 1  val F1 0.6224   TEST F1 0.6162   (752s, 42 epochs)
+    seed 2  val F1 0.6298   TEST F1 0.6098   (790s, 43 epochs)
+    seed 3  val F1 0.6369   TEST F1 0.6166   (809s, 44 epochs)
+    seed 4  val F1 0.6251   TEST F1 0.6057   (1073s, 60 epochs)
+    seed 5  val F1 0.6331   TEST F1 0.6256   (1008s, 58 epochs)
+    VAL  F1 0.6295 +/- 0.0059   (886s/seed)
+    TEST F1 0.6148 +/- 0.0076   P 0.7108  R 0.5418
+
+========================================================================
+2. RESULT
+========================================================================
+
+  Phase 1 baseline (word only)  0.5965 +/- 0.0103
+  + subword channel             0.6148 +/- 0.0076
+  change                        +0.0183
+
+  our word list                 0.6521   <- still the floor to beat
+  published XLM-R               0.7200
+
+  precision 0.7108   recall 0.5418
+  Phase 1 was precision 0.7452, recall 0.4979.
+
+  MODEST GAIN. +0.0183 exceeds the noise (0.0103) but not by much.
+  Report with the standard deviation and do not overstate it.
+
+  ABLATION ROWS STILL OWED
+    --pooling mean            does piece ORDER matter?
+    --no-word-channel         is fastText still needed?
+  Both at 5 seeds, same settings.

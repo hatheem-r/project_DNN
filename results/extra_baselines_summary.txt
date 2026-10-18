@@ -1,0 +1,23 @@
+                  seeds     val  val_sd    test  test_sd       P       R
+name                                                                    
+bilstm_bpe_only       5  0.7034  0.0012  0.7061   0.0079  0.7307  0.6835
+bilstm_char_only      5  0.7053  0.0052  0.7001   0.0065  0.7009  0.6996
+bilstm_word_only      5  0.6030  0.0052  0.6012   0.0050  0.7150  0.5190
+trf_bpe_only          5  0.6998  0.0064  0.6995   0.0022  0.7224  0.6787
+trf_word_only         5  0.6327  0.0147  0.6278   0.0157  0.7112  0.5631 
+
+Reference, earlier hardware (step7b): BiLSTM BPE-1000 only, val 0.7071 +/- 0.0031, test 0.7059 +/- 0.0040
+
+Characters vs BPE pieces (BiLSTM, no word channel):
+  bilstm_char_only 0.7001 vs bilstm_bpe_only 0.7061: -0.0060 (larger std 0.0079) -> NO MEASURABLE DIFFERENCE
+
+Transformer vs BiLSTM at word level:
+  trf_word_only 0.6278 vs bilstm_word_only 0.6012: +0.0267 (larger std 0.0157) -> modestly higher
+
+Does the subword channel help the transformer?
+  trf_bpe_only 0.6995 vs trf_word_only 0.6278: +0.0717 (larger std 0.0157) -> CLEARLY HIGHER
+
+Transformer vs BiLSTM with BPE pieces:
+  trf_bpe_only 0.6995 vs bilstm_bpe_only 0.7061: -0.0066 (larger std 0.0079) -> NO MEASURABLE DIFFERENCE
+
+saved to /kaggle/working/extra_baselines : ['extra_bilstm_bpe_only.txt', 'extra_bilstm_char_only.txt', 'extra_bilstm_word_only.txt', 'extra_trf_bpe_only.txt', 'extra_trf_word_only.txt', 'results_extra_baselines.csv']

@@ -1,0 +1,52 @@
+
+========================================================================
+0. SETUP
+========================================================================
+device cuda   mode FINAL (scores test)
+seeds [1, 2, 3, 4, 5]   batch 32   crf True   epochs<=60 patience 12
+
+row-level results append to: results/results_extra_baselines.csv
+this readable report goes to stdout - redirect it to results/
+
+train-part 6,000  val 1,500  test 2,500
+vocab 28,456   embedding matrix (28456, 300)
+
+========================================================================
+1. FINAL RUN - none
+========================================================================
+Frozen Phase 1 settings (batch 32, CRF on) so the number is directly
+comparable to the baseline 0.5965.
+
+--- none  (0 pieces)  encoder transformer  
+    tag: trf_word_only
+    trainable 303,754  (subword channel 0, lstm input 300)
+    seed 1  val F1 0.6392   TEST F1 0.6370   (632s, 36 epochs)
+    seed 2  val F1 0.6341   TEST F1 0.6332   (804s, 46 epochs)
+    seed 3  val F1 0.6355   TEST F1 0.6370   (772s, 44 epochs)
+    seed 4  val F1 0.6080   TEST F1 0.6001   (384s, 22 epochs)
+    seed 5  val F1 0.6469   TEST F1 0.6318   (681s, 39 epochs)
+    VAL  F1 0.6327 +/- 0.0147   (655s/seed)
+    TEST F1 0.6278 +/- 0.0157   P 0.7112  R 0.5631
+
+========================================================================
+2. RESULT
+========================================================================
+
+  Phase 1 baseline (word only)  0.5965 +/- 0.0103
+  + subword channel             0.6278 +/- 0.0157
+  change                        +0.0313
+
+  our word list                 0.6521   <- still the floor to beat
+  published XLM-R               0.7200
+
+  precision 0.7112   recall 0.5631
+  Phase 1 was precision 0.7452, recall 0.4979.
+
+  MODEST GAIN. +0.0313 exceeds the noise (0.0157) but not by much.
+  Report with the standard deviation and do not overstate it.
+
+  ABLATION ROWS STILL OWED
+    --pooling mean            does piece ORDER matter?
+    --no-word-channel         is fastText still needed?
+  Both at 5 seeds, same settings.
+

@@ -1,10 +1,10 @@
 """
-Error analysis and efficiency measurement - the last two gaps in the paper.
+Error analysis and efficiency measurement.
 
     --errors       train one seed, dump test predictions against gold, and
-                   produce an error breakdown plus example tweets for Section 7.7
-    --efficiency   measure parameters, inference throughput and peak memory
-                   for Section 9
+                   produce an error breakdown by word familiarity plus example
+                   tweets
+    --efficiency   measure parameters, inference throughput, latency and memory
 
 Run:
     python notebooks/10_analysis.py --errors     > results/error_analysis.txt
@@ -17,7 +17,7 @@ WHAT THIS SCRIPT CANNOT DO FOR YOU
 ----------------------------------
 It prints the tweets, the gold spans and the predicted spans. Deciding WHY a
 miss happened - implicit offence, sarcasm, an unseen inflection, a plausible
-annotation disagreement - requires reading Sinhala. Section 7.7 needs a human.
+annotation disagreement - requires a reader of Sinhala.
 """
 import sys, os, argparse, time, json
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -54,15 +54,22 @@ ap.add_argument("--efficiency", action="store_true")
 ap.add_argument("--minimal", action="store_true",
                 help="analyse the subword-only model instead of word + subword")
 ap.add_argument("--word-only", action="store_true",
-                help="analyse the PHASE 1 BASELINE (no subword channel). Use this "
-                     "to get the seen/unseen breakdown for the baseline, which is "
-                     "what makes the Section 7.7 comparison meaningful.")
+                help="analyse the word-level baseline (no subword channel), for "
+                     "the seen/unseen comparison")
 ap.add_argument("--examples", type=int, default=24)
 ap.add_argument("--epochs", type=int, default=EPOCHS)
+ap.add_argument("--threads", type=int, default=0,
+                help="limit PyTorch to this many CPU threads (0 = PyTorch default)")
+ap.add_argument("--latency-tweets", type=int, default=500,
+                help="tweets timed one at a time for the batch-1 latency figure")
+ap.add_argument("--limit", type=int, default=0,
+                help="time throughput on the first N test tweets (0 = all 2,500)")
 args = ap.parse_args()
 if not (args.errors or args.efficiency):
     print("Pass --errors or --efficiency")
     sys.exit(1)
+if args.threads:
+    torch.set_num_threads(args.threads)
 
 
 # ==========================================================================
@@ -90,11 +97,17 @@ if not os.path.exists(SP_PREFIX + ".model"):
 sp = load_sentencepiece(SP_PREFIX + ".model")
 
 vocab, _ = build_vocab(train_full["token_list"], min_freq=1)
-if not os.path.exists(VEC):
-    print(f"\nMISSING {VEC}. See notebooks/03_embeddings.py for the download.")
-    sys.exit(1)
-vectors, dim = load_vectors_for_vocab(VEC, vocab, verbose=False)
-matrix, _ = build_embedding_matrix(vocab, vectors, dim)
+if args.minimal:
+    # The subword-only model has no word channel, so it is built without an
+    # embedding table and the fastText file is never opened.
+    matrix = None
+    print("fastText vectors NOT loaded - the subword-only model has no word channel")
+else:
+    if not os.path.exists(VEC):
+        print(f"\nMISSING {VEC}. See notebooks/03_embeddings.py for the download.")
+        sys.exit(1)
+    vectors, dim = load_vectors_for_vocab(VEC, vocab, verbose=False)
+    matrix, _ = build_embedding_matrix(vocab, vectors, dim)
 SP_ARG = None if args.word_only else sp
 print(f"model: {_names[variant]}")
 print(f"tokenizer {sp.get_piece_size():,} pieces   vocab {len(vocab):,}")
@@ -117,7 +130,11 @@ def get_model():
     """Load the saved checkpoint, or train one and save it."""
     model = build().to(device)
     if os.path.exists(CKPT):
-        model.load_state_dict(torch.load(CKPT, map_location=device))
+        state = torch.load(CKPT, map_location=device)
+        if model.embedding is None:
+            # a checkpoint saved before the table was removed still carries it
+            state.pop("embedding.weight", None)
+        model.load_state_dict(state)
         print(f"loaded {CKPT}")
         return model
 
@@ -207,21 +224,9 @@ words, or has that gap closed?
     print(f"""
   seen minus unseen F1: {gap:+.4f}
 
-INTERPRET CAREFULLY, AND REPORT WHICHEVER IT IS.
-  A large positive gap means subwords narrowed the unseen-word problem but did
-  not solve it. Say that; it is an honest limitation and a clear direction for
-  future work.
-  A small gap means the mechanism claim is strongly supported.
-  Either way this number belongs in Section 7.7.
+For the same breakdown on the word-level baseline:
 
-TO MAKE THIS COMPARISON MEANINGFUL, run the SAME breakdown on the Phase 1
-baseline, which has no subword channel:
-
-    python notebooks/10_analysis.py --errors --word-only > results/error_analysis_wordonly.txt
-
-The unseen-bucket F1 from that run is the reference point. Our unseen F1 minus
-the baseline's unseen F1 is how much the subword channel actually bought on
-unseen words - which is the number the mechanism claim rests on.""")
+    python notebooks/10_analysis.py --errors --word-only > results/error_analysis_wordonly.txt""")
 
     # ------------------------------------------------------------------
     rule("3. THE MOST FREQUENT INDIVIDUAL ERRORS")
@@ -251,7 +256,7 @@ still missed it, the failure is contextual rather than lexical - which is a
 different and more interesting kind of error.""")
 
     # ------------------------------------------------------------------
-    rule("4. EXAMPLE TWEETS FOR SECTION 7.7")
+    rule("4. EXAMPLE TWEETS")
     print("Legend:  [word] correct hit   <word> false positive   {word} missed\n")
     cats = {"perfect": [], "over-flagged": [], "under-flagged": [], "mixed": []}
     per_cat = max(args.examples // 4, 1)
@@ -283,14 +288,6 @@ different and more interesting kind of error.""")
             print(f"    {' '.join(marked)}")
         print()
 
-    print("""NEXT STEP, AND IT NEEDS A HUMAN.
-
-Pick five to eight examples above and write Section 7.7. For each, say WHY the
-model behaved as it did: an unseen inflection of a known root, offence carried by
-context rather than any single word, sarcasm, or a plausible annotation
-disagreement. That judgement requires reading Sinhala and cannot be automated.
-
-Reviewers consistently reward this section and almost no student paper has one.""")
 
     with open(f"results/error_analysis_raw_{variant}.json", "w") as fh:
         json.dump({"gold": gold_all, "pred": pred_all,
@@ -301,7 +298,7 @@ Reviewers consistently reward this section and almost no student paper has one."
 
 # ==========================================================================
 if args.efficiency:
-    rule("EFFICIENCY MEASUREMENTS - FOR SECTION 9")
+    rule("EFFICIENCY MEASUREMENTS")
     model = get_model()
     model.eval()
 
@@ -310,7 +307,8 @@ if args.efficiency:
     for k, v in p.items():
         print(f"  {k:<26} {v:>14,}")
 
-    loader = make_loader(test, vocab, BATCH, shuffle=False, sp=SP_ARG)
+    timed = test.iloc[:args.limit] if args.limit else test
+    loader = make_loader(timed, vocab, BATCH, shuffle=False, sp=SP_ARG)
     batches = list(loader)
 
     def run_all():
@@ -339,24 +337,85 @@ if args.efficiency:
     el = time.time() - t0
 
     print(f"""
-inference over the full test split, measured on {device}:
+inference over test[0:{n_tweet}], measured on {device}:
   tweets                 {n_tweet:,}
   real tokens            {n_tok:,}
   wall clock             {el:.2f}s
   tweets per second      {n_tweet / el:,.0f}
   tokens per second      {n_tok / el:,.0f}
   ms per tweet           {el / n_tweet * 1000:.3f}""")
+    peak_gpu = None
     if device.type == "cuda":
-        print(f"  peak GPU memory        {torch.cuda.max_memory_allocated() / 1e6:.1f} MB")
+        peak_gpu = torch.cuda.max_memory_allocated() / 1e6
+        print(f"  peak GPU memory        {peak_gpu:.1f} MB")
+
+    # Batch-1 latency: one tweet at a time, the way an app moderating posts as
+    # they arrive would run it. Throughput above is batched and flatters this.
+    # The first 3 tweets are warm-up and the next n_lat are timed, the same
+    # tweets notebooks/11_transformer_efficiency.py times.
+    n_lat = min(args.latency_tweets, len(test) - 3)
+    lat_ms = []
+    if n_lat:
+        single = list(make_loader(test.iloc[:n_lat + 3], vocab, 1, shuffle=False, sp=SP_ARG))
+        with torch.no_grad():
+            for k, (ids, _, mask, lens, _, pid, plen) in enumerate(single):
+                ids, mask = ids.to(device), mask.to(device)
+                if pid is not None:
+                    pid, plen = pid.to(device), plen.to(device)
+                if device.type == "cuda":
+                    torch.cuda.synchronize()
+                t1 = time.perf_counter()
+                model.predict(ids, mask, lens, pid, plen)
+                if device.type == "cuda":
+                    torch.cuda.synchronize()
+                if k >= 3:                       # first few are warm-up
+                    lat_ms.append((time.perf_counter() - t1) * 1000)
+        lat_ms.sort()
+        print(f"""
+batch-1 latency, test[3:{3 + len(lat_ms)}] timed one at a time:
+  median ms per tweet    {lat_ms[len(lat_ms) // 2]:.3f}
+  95th percentile ms     {lat_ms[int(len(lat_ms) * 0.95)]:.3f}""")
+
+    # Size on disk, measured by saving it, not estimated from a parameter count.
+    probe = "artifacts/_size_probe.pt"
+    torch.save(model.state_dict(), probe)
+    model_mb = os.path.getsize(probe) / 1e6
+    os.remove(probe)
+    sp_mb = os.path.getsize(SP_PREFIX + ".model") / 1e6 if SP_ARG is not None else 0.0
+
+    peak_ram = None
+    try:
+        import resource                          # Linux; ru_maxrss is in KB
+        peak_ram = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1e3
+    except ImportError:
+        pass
 
     print(f"""
-  model size at float32  ~{p['total'] * 4 / 1e6:.1f} MB
-  external files needed  {'none' if args.minimal else 'cc.si.300.vec.gz (460 MB)'}
+hardware and settings:
+  device                 {device}
+  CPU threads used       {torch.get_num_threads()}  (of {os.cpu_count()} available)
+  batch size             {BATCH} for throughput, 1 for latency
+  torch                  {torch.__version__}
 
-FOR THE PAPER.
-Report these as MEASURED and state the hardware and batch size ({BATCH}).
-Published transformer figures should be cited as parameter counts only, unless
-you time XLM-R yourself on the same GPU in inference-only mode. Loading a model
-to time its forward pass is not fine-tuning, so that comparison is available to
-you if you want a like-for-like throughput number - but say clearly which figures
-are measured and which are cited.""")
+size and dependencies (measured):
+  word-embedding table   {'none' if model.embedding is None else f"{p['word_embedding']:,} params"}
+  model file on disk     {model_mb:.2f} MB
+  tokenizer file         {sp_mb:.2f} MB
+  external files needed  {'none' if model.embedding is None else 'cc.si.300.vec.gz (460 MB) to build the model'}
+  peak process RAM       {f'{peak_ram:.0f} MB (whole Python process: libraries, data and model)' if peak_ram else 'not available on this OS'}
+""")
+
+    out = {"variant": variant, "device": str(device), "threads": torch.get_num_threads(),
+           "parameters": p, "batch": BATCH, "tweets": n_tweet,
+           "throughput_tweets": f"test[0:{n_tweet}]",
+           "latency_tweets": f"test[3:{3 + len(lat_ms)}]" if lat_ms else None,
+           "tweets_per_s": round(n_tweet / el, 1), "ms_per_tweet_batched": round(el / n_tweet * 1000, 3),
+           "latency_ms_median": round(lat_ms[len(lat_ms) // 2], 3) if lat_ms else None,
+           "latency_ms_p95": round(lat_ms[int(len(lat_ms) * 0.95)], 3) if lat_ms else None,
+           "model_file_mb": round(model_mb, 3), "tokenizer_file_mb": round(sp_mb, 3),
+           "peak_gpu_mb": round(peak_gpu, 1) if peak_gpu else None,
+           "peak_process_ram_mb": round(peak_ram) if peak_ram else None}
+    tag = f"{variant}_{device.type}_t{torch.get_num_threads()}" + (f"_n{args.limit}" if args.limit else "")
+    with open(f"results/efficiency_{tag}.json", "w") as fh:
+        json.dump(out, fh, indent=2)
+    print(f"saved results/efficiency_{tag}.json")

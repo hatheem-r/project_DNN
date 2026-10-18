@@ -1,0 +1,44 @@
+$ python notebooks/12_fasttext_oov.py --bin /kaggle/temp/embeddings/cc.si.300.bin 
+
+========================================================================
+1. LOAD
+========================================================================
+training-part vocabulary 28,456   matrix (28456, 300)
+fastText model: 818,830 words, dimension 300
+
+========================================================================
+2. WHICH ROWS ARE RANDOM
+========================================================================
+real .vec vector   23,314 (81.9%)
+random vector      5,140 (18.1%)
+  of the random rows, words in fastText's own vocabulary: 4
+  the rest get a vector built only from character n-grams
+
+========================================================================
+3. MATRICES
+========================================================================
+artifacts/embedding_matrix_ftfill.npy   (28456, 300)   (5,140 rows replaced)
+artifacts/embedding_matrix_ftopen.npy   (40171, 300)   (11,715 validation/test words added)
+
+========================================================================
+4. TEST WORD OCCURRENCES BY SOURCE OF THEIR VECTOR
+========================================================================
+test word occurrences: 59,670
+  real .vec vector                  81.4%   all three matrices
+  random in baseline                 4.3%   fastText in ftfill and ftopen
+  unseen in training (UNK)          14.3%   fastText in ftopen only
+
+========================================================================
+5. SANITY CHECK - NEIGHBOURS OF REPLACED WORDS
+========================================================================
+Nearest real-vector words to the most frequent replaced words. Related
+forms here mean the n-gram vectors carry information.
+
+  @USER              -> SRILANKA, Gotham, බැලලි, සුදුසුත්, විඳීවි
+  ටහුඩු              -> අම්මටහුඩු, SRILANKA, තීනෝ, අම්මටසිරි, මඤ්ඤංද
+  එපා.               -> එපා, කරන්නෙපා, වෙන්නෙපා, යන්නෙපා, දෙන්නෙපා
+  _                  -> ^, l, j, r, u
+                    -> බේරෙ, ගහනවානේ, අවවාදයට, ආදර්ශය, උතුම්ය
+  නැතුව.             -> නැතුව, කැතත්, නැතිවුනානේ, නොකරද්දි, නැතුවත්
+  එකේ.               -> Gotham, SRILANKA, pakaya, kriyathmaka, foodcity
+  sriLanka           -> SriLanka, SriLankan, Nissanka, Lanka, latestnews

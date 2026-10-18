@@ -1,27 +1,24 @@
+# large or regenerable
 data/
 embeddings/
+artifacts/
 runs/
 *.pt
 *.bin
+
+# Python
 __pycache__/
 *.pyc
-.DS_Store
-.venv/
-venv/
 *.egg-info/
 dist/
 build/
 .pytest_cache/
+.ipynb_checkpoints/
 
+# environments
+.venv/
 venv/
-/venv
 *.env
 .env
 
-.ipynb_checkpoints/
-
-embeddings/
-
-artifacts/
-
-__pycache__/
+.DS_Store

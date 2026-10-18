@@ -1,0 +1,160 @@
+$ python notebooks/11_transformer_efficiency.py --all --latency-tweets 100 
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+
+========================================================================
+SETUP
+========================================================================
+device: cuda   CPU threads used: 2 (of 4 available)
+test tweets timed: 2,500
+
+========================================================================
+sinbert  (NLPC-UOM/SinBERT-large)
+========================================================================
+
+RobertaForTokenClassification LOAD REPORT from: NLPC-UOM/SinBERT-large
+Key                             | Status     | 
+--------------------------------+------------+-
+lm_head.layer_norm.bias         | UNEXPECTED | 
+lm_head.dense.weight            | UNEXPECTED | 
+lm_head.dense.bias              | UNEXPECTED | 
+lm_head.layer_norm.weight       | UNEXPECTED | 
+lm_head.bias                    | UNEXPECTED | 
+roberta.embeddings.position_ids | UNEXPECTED | 
+classifier.bias                 | MISSING    | 
+classifier.weight               | MISSING    | 
+
+Notes:
+- UNEXPECTED	:can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+- MISSING	:those params were newly initialized because missing from the checkpoint. Consider training on your downstream task.
+  loaded in 6.9s
+  parameters (measured): 125,389,058
+  size at float32: 501.6 MB
+
+  inference over 2,500 tweets, batch 32, max_len 128:
+    wall clock       17.38s
+    tweets/s         143.9
+    tokens/s         10,980.8
+    tokens/tweet     76.3
+    ms/tweet         6.951
+    peak GPU memory  650.3 MB
+    batch-1 latency  median 8.731 ms, 95th pct 9.536 ms
+
+========================================================================
+xlmt  (cardiffnlp/twitter-xlm-roberta-base)
+========================================================================
+
+XLMRobertaForTokenClassification LOAD REPORT from: cardiffnlp/twitter-xlm-roberta-base
+Key                             | Status     | 
+--------------------------------+------------+-
+lm_head.layer_norm.bias         | UNEXPECTED | 
+lm_head.dense.weight            | UNEXPECTED | 
+lm_head.dense.bias              | UNEXPECTED | 
+lm_head.layer_norm.weight       | UNEXPECTED | 
+lm_head.decoder.bias            | UNEXPECTED | 
+lm_head.bias                    | UNEXPECTED | 
+roberta.embeddings.position_ids | UNEXPECTED | 
+lm_head.decoder.weight          | UNEXPECTED | 
+classifier.bias                 | MISSING    | 
+classifier.weight               | MISSING    | 
+
+Notes:
+- UNEXPECTED	:can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+- MISSING	:those params were newly initialized because missing from the checkpoint. Consider training on your downstream task.
+  loaded in 11.1s
+  parameters (measured): 277,454,594
+  size at float32: 1,109.8 MB
+
+  inference over 2,500 tweets, batch 32, max_len 128:
+    wall clock       15.23s
+    tweets/s         164.1
+    tokens/s         7,490.9
+    tokens/tweet     45.6
+    ms/tweet         6.092
+    peak GPU memory  1258.5 MB
+    batch-1 latency  median 8.718 ms, 95th pct 9.897 ms
+
+========================================================================
+xlmr-base  (xlm-roberta-base)
+========================================================================
+
+XLMRobertaForTokenClassification LOAD REPORT from: xlm-roberta-base
+Key                         | Status     | 
+----------------------------+------------+-
+lm_head.layer_norm.bias     | UNEXPECTED | 
+roberta.pooler.dense.bias   | UNEXPECTED | 
+lm_head.dense.weight        | UNEXPECTED | 
+lm_head.dense.bias          | UNEXPECTED | 
+lm_head.layer_norm.weight   | UNEXPECTED | 
+roberta.pooler.dense.weight | UNEXPECTED | 
+lm_head.bias                | UNEXPECTED | 
+classifier.bias             | MISSING    | 
+classifier.weight           | MISSING    | 
+
+Notes:
+- UNEXPECTED	:can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+- MISSING	:those params were newly initialized because missing from the checkpoint. Consider training on your downstream task.
+  loaded in 8.2s
+  parameters (measured): 277,454,594
+  size at float32: 1,109.8 MB
+
+  inference over 2,500 tweets, batch 32, max_len 128:
+    wall clock       15.09s
+    tweets/s         165.6
+    tokens/s         7,559.0
+    tokens/tweet     45.6
+    ms/tweet         6.037
+    peak GPU memory  1258.5 MB
+    batch-1 latency  median 8.43 ms, 95th pct 9.231 ms
+
+========================================================================
+xlmr-large  (xlm-roberta-large)
+========================================================================
+
+XLMRobertaForTokenClassification LOAD REPORT from: xlm-roberta-large
+Key                         | Status     | 
+----------------------------+------------+-
+lm_head.layer_norm.bias     | UNEXPECTED | 
+roberta.pooler.dense.bias   | UNEXPECTED | 
+lm_head.dense.weight        | UNEXPECTED | 
+lm_head.dense.bias          | UNEXPECTED | 
+lm_head.layer_norm.weight   | UNEXPECTED | 
+roberta.pooler.dense.weight | UNEXPECTED | 
+lm_head.bias                | UNEXPECTED | 
+classifier.weight           | MISSING    | 
+classifier.bias             | MISSING    | 
+
+Notes:
+- UNEXPECTED	:can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+- MISSING	:those params were newly initialized because missing from the checkpoint. Consider training on your downstream task.
+  loaded in 13.6s
+  parameters (measured): 558,842,882
+  size at float32: 2,235.4 MB
+
+  inference over 2,500 tweets, batch 32, max_len 128:
+    wall clock       47.2s
+    tweets/s         53.0
+    tokens/s         2,417.1
+    tokens/tweet     45.6
+    ms/tweet         18.881
+    peak GPU memory  2430.1 MB
+    batch-1 latency  median 16.855 ms, 95th pct 26.797 ms
+
+========================================================================
+SUMMARY - FOR SECTION 9
+========================================================================
+device cuda, 2 CPU threads, 2,500 tweets, batch 32
+model                params       MB   tweets/s   ms/tweet    b1 ms   peak MB
+------------------------------------------------------------------------------
+sinbert         125,389,058    501.6      143.9      6.951    8.731     650.3
+xlmt            277,454,594   1109.8      164.1      6.092    8.718    1258.5
+xlmr-base       277,454,594   1109.8      165.6      6.037     8.43    1258.5
+xlmr-large      558,842,882   2235.4       53.0     18.881   16.855    2430.1
+
+Compare against results/efficiency_minimal_<device>_t<threads>.json from
+notebooks/10_analysis.py --efficiency --minimal, run on the same hardware with
+the same thread setting. Compare tweets/s and batch-1 ms, not tokens/s: these
+models count their own subword tokens, ours counts words.
+
+saved results/transformer_efficiency_cuda_t2.json
+
+Also commit the printed summary table above (redirect stdout to a .txt file).

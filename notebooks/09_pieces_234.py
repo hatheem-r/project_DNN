@@ -34,8 +34,8 @@ from train import train_one_seed, evaluate, get_device
 from metrics import aggregate_seeds
 
 VEC_PATH = os.environ.get("SOLD_VECTORS", "embeddings/cc.si.300.vec.gz")
-# CSV path is per-piece so three people can run in parallel and commit
-# without colliding. Set below once the mode is known.
+# One results CSV per experiment, so experiments can run in parallel.
+# Set below once the mode is known.
 CSV_PATH = None
 SP_TYPE, SP_VOCAB = "bpe", 1000
 PIECE1_VAL = 0.7083     # bpe_1000 both channels, validation
@@ -59,6 +59,8 @@ p.add_argument("--gamma", type=float, default=2.0)
 p.add_argument("--alpha", type=float, default=0.75)
 p.add_argument("--distill-weight", type=float, default=1.0)
 p.add_argument("--uncertainty", type=float, default=0.1)
+p.add_argument("--exclude-sold", action="store_true",
+               help="remove SemiSOLD rows that are SOLD training or test tweets")
 p.add_argument("--minimal", action="store_true", help="subword channel only")
 p.add_argument("--seeds", type=int, nargs="+", default=None)
 p.add_argument("--epochs", type=int, default=60)
@@ -66,7 +68,7 @@ p.add_argument("--patience", type=int, default=12)
 p.add_argument("--batch-size", type=int, default=None)
 p.add_argument("--crf", action="store_true", help="force CRF on (off by default)")
 p.add_argument("--owner", type=str, default=os.environ.get("OWNER", "unknown"),
-               help="your name - recorded in every row so results are traceable")
+               help="label recorded in every results row")
 args = p.parse_args()
 
 if not any([args.piece2, args.piece3, args.piece4, args.final]):
@@ -75,7 +77,7 @@ if not any([args.piece2, args.piece3, args.piece4, args.final]):
 PIECE = ("final" if args.final else
          "piece2" if args.piece2 else
          "piece3" if args.piece3 else "piece4")
-CSV_PATH = f"results/results_{PIECE}.csv"
+CSV_PATH = f"results/results_{PIECE}{'_nosold' if args.exclude_sold else ''}.csv"
 
 SEEDS = args.seeds or ([1, 2, 3, 4, 5] if args.final else [1, 2, 3])
 BATCH = args.batch_size or (32 if args.final else 64)
@@ -90,9 +92,6 @@ rule("0. SETUP")
 device = get_device()
 print(f"experiment: {PIECE.upper()}   owner: {args.owner}")
 print(f"device {device}   seeds {SEEDS}   batch {BATCH}   crf {USE_CRF}")
-if args.owner == "unknown":
-    print("\nWARNING: no --owner given. Pass --owner YourName so the rows in")
-    print("the results file say who ran them.")
 
 train_full = load_sold("train")
 test = load_sold("test")
@@ -201,12 +200,12 @@ def verdict(name, got, ref, noise):
     d = got - ref
     noise = max(noise, 1e-4)   # zero std would make an exact tie read as "hurt"
     if d > 2 * noise:
-        return f"{name}: {d:+.4f}  CLEAR GAIN"
+        return f"{name}: {d:+.4f}  clear gain"
     if d > noise:
-        return f"{name}: {d:+.4f}  modest gain, report with the std"
+        return f"{name}: {d:+.4f}  modest gain"
     if d > -noise:
-        return f"{name}: {d:+.4f}  NO MEASURABLE EFFECT - report the null"
-    return f"{name}: {d:+.4f}  HURT - report honestly"
+        return f"{name}: {d:+.4f}  no measurable effect"
+    return f"{name}: {d:+.4f}  lower"
 
 
 # ==========================================================================
@@ -284,6 +283,9 @@ elif args.piece4:
     print("Loading SemiSOLD (145k tweets with saved teacher scores)...")
     raw = load_semisold()
     describe(raw)
+    if args.exclude_sold:
+        from semisold import drop_overlap
+        raw = drop_overlap(raw, [" ".join(t) for t in [*train_full["token_list"], *test["token_list"]]])
     print()
     semi = prepare(raw, uncertainty_threshold=args.uncertainty)
     print("""
@@ -298,7 +300,8 @@ the sentence head, and the shared encoder carries any benefit to the tokens.""")
     for dw in [0.0, 0.5, 1.0]:
         args.distill_weight = dw
         dl = None if dw == 0 else make_semisold_loader(semi, vocab, BATCH, sp=sp)
-        va, _ = run(f"piece4_dw{dw}", args.loss, args.lam, distill_loader=dl)
+        va, _ = run(f"piece4_dw{dw}" + ("_nosold" if args.exclude_sold else ""),
+                    args.loss, args.lam, distill_loader=dl)
         res[dw] = va
     rule("PIECE 4 RANKING")
     print(f"{'distill w':>10} {'val F1':>9} {'std':>8} {'P':>9} {'R':>9}")
@@ -312,11 +315,6 @@ the sentence head, and the shared encoder carries any benefit to the tokens.""")
     print("\n" + verdict(f"best weight={best[0]} vs no distillation",
                          best[1]["offensive_f1"]["mean"], base["mean"],
                          max(base["std"], best[1]["offensive_f1"]["std"])))
-    print("""
-The authors found lightweight models gain most from this augmentation
-(BiLSTM+CBOW +2.78%, XLM-R +0.63%). If we see nothing, one likely reason is
-that Piece 1 already moved us into the "already strong" regime where they
-observed little benefit. Say that, with their numbers cited.""")
 
 # ==========================================================================
 else:
@@ -326,7 +324,11 @@ else:
     dl = None
     if args.lam > 0 and args.distill_weight > 0:
         from semisold import load_semisold, prepare, make_semisold_loader
-        semi = prepare(load_semisold(), uncertainty_threshold=args.uncertainty)
+        raw = load_semisold()
+        if args.exclude_sold:
+            from semisold import drop_overlap
+            raw = drop_overlap(raw, [" ".join(t) for t in [*train_full["token_list"], *test["token_list"]]])
+        semi = prepare(raw, uncertainty_threshold=args.uncertainty)
         dl = make_semisold_loader(semi, vocab, BATCH, sp=sp)
     va, ta = run("final_combined", args.loss, args.lam, distill_loader=dl, score_test=True)
     rule("RESULT")
@@ -342,16 +344,4 @@ else:
     print(verdict("vs Piece 1", f1, PIECE1_TEST,
                   max(ta["offensive_f1"]["std"], 0.0066)))
 
-print(f"""
-========================================================================
-WHAT TO COMMIT
-========================================================================
-  {CSV_PATH}
-  results/{PIECE}_report.txt   (if you redirected stdout there)
-
-Commit ONLY those two files. Do not commit artifacts/ or embeddings/.
-
-    git add {CSV_PATH} results/{PIECE}_report.txt
-    git commit -m "{PIECE} results ({args.owner})"
-    git pull --rebase && git push
-""")
+print(f"\nper-seed rows appended to {CSV_PATH}")

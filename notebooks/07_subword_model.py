@@ -44,10 +44,10 @@ import numpy as np
 import torch
 
 from data import load_sold, train_val_split
-from embeddings import build_vocab
+from embeddings import build_vocab, extend_vocab
 from dataset import make_loader
 from model import BiLSTMTagger
-from subword import load_sentencepiece
+from subword import load_sentencepiece, CharTokenizer
 from train import train_one_seed, evaluate, get_device
 from metrics import aggregate_seeds
 
@@ -75,7 +75,18 @@ def rule(t):
 p = argparse.ArgumentParser()
 p.add_argument("--sweep", action="store_true", help="fast validation sweep")
 p.add_argument("--final", action="store_true", help="full run, scores test")
-p.add_argument("--sp", type=str, default=None, help="e.g. bpe_8000")
+p.add_argument("--sp", type=str, default=None,
+               help="e.g. bpe_8000; 'char' for characters (Lample et al. 2016); "
+                    "'none' for no subword channel (word level only)")
+p.add_argument("--encoder", type=str, default="bilstm", choices=["bilstm", "transformer"],
+               help="sentence-level encoder; transformer is trained from scratch")
+p.add_argument("--matrix", type=str, default=MATRIX,
+               help="word embedding matrix (default: the fastText .vec matrix)")
+p.add_argument("--open-vocab", action="store_true",
+               help="add validation and test words to the vocabulary; use with a "
+                    "matrix from notebooks/12_fasttext_oov.py")
+p.add_argument("--csv", type=str, default=None,
+               help="results file to append to (default results/results_phase2.csv)")
 p.add_argument("--pooling", type=str, default="bilstm", choices=["bilstm", "mean"])
 p.add_argument("--piece-dim", type=int, default=50)
 p.add_argument("--subword-dim", type=int, default=100)
@@ -92,6 +103,11 @@ args = p.parse_args()
 if not (args.sweep or args.final):
     print("Pass --sweep or --final. See the docstring.")
     sys.exit(1)
+if args.sp == "none" and args.no_word_channel:
+    print("--sp none with --no-word-channel would leave the model with no input.")
+    sys.exit(1)
+if args.csv:
+    RESULTS_CSV = args.csv
 
 # Sweep = cheap settings (Step 0 found CRF costs 6-8x). Final = frozen Phase 1
 # settings so the number is comparable to 0.5965.
@@ -122,13 +138,17 @@ train_full = load_sold("train")
 test = load_sold("test")
 train_part, val = train_val_split(train_full)
 vocab, _ = build_vocab(train_part["token_list"], min_freq=1)
-matrix = np.load(MATRIX)
+if args.open_vocab:
+    vocab = extend_vocab(vocab, [*val["token_list"], *test["token_list"]])
+matrix = np.load(args.matrix)
+print(f"embedding matrix: {args.matrix}" + ("   (open vocabulary)" if args.open_vocab else ""))
 print(f"\nrow-level results append to: {RESULTS_CSV}")
 print("this readable report goes to stdout - redirect it to results/")
 print(f"\ntrain-part {len(train_part):,}  val {len(val):,}  test {len(test):,}")
 print(f"vocab {len(vocab):,}   embedding matrix {matrix.shape}")
 if matrix.shape[0] != len(vocab):
-    print("MISMATCH between matrix rows and vocab. Re-run notebooks/03_embeddings.py.")
+    print("MISMATCH between matrix rows and vocab. Re-run notebooks/03_embeddings.py"
+          " (or notebooks/12_fasttext_oov.py for --open-vocab).")
     sys.exit(1)
 
 
@@ -137,8 +157,23 @@ def build(sp, n_pieces):
         matrix, hidden_size=64, dropout=0.5, freeze_embeddings=True,
         use_crf=USE_CRF, n_pieces=n_pieces, piece_dim=args.piece_dim,
         subword_dim=args.subword_dim, subword_pooling=args.pooling,
-        use_word_channel=not args.no_word_channel,
+        use_word_channel=not args.no_word_channel, encoder=args.encoder,
     )
+
+
+def load_tokenizer(sp_name):
+    """Return (tokenizer, n_pieces), or (None, 0) for word level only."""
+    if sp_name == "none":
+        return None, 0
+    if sp_name == "char":
+        tok = CharTokenizer(w for toks in train_part["token_list"] for w in toks)
+        return tok, tok.get_piece_size()
+    path = f"artifacts/sp_{sp_name}.model"
+    if not os.path.exists(path):
+        print(f"  MISSING {path} - run notebooks/06_subword_tokenizer.py first")
+        return None, -1
+    tok = load_sentencepiece(path)
+    return tok, tok.get_piece_size()
 
 
 CSV_FIELDS = [
@@ -157,6 +192,12 @@ def make_tag(sp_name):
     if args.tag:
         return args.tag
     parts = ["sweep" if args.sweep else "final", sp_name, args.pooling]
+    if args.encoder != "bilstm":
+        parts.append(args.encoder)
+    if args.matrix != MATRIX:
+        parts.append(os.path.splitext(os.path.basename(args.matrix))[0])
+    if args.open_vocab:
+        parts.append("openvocab")
     if args.subword_dim != 100:
         parts.append(f"sd{args.subword_dim}")
     if args.piece_dim != 50:
@@ -203,17 +244,14 @@ def log_row(tag, sp_name, n_pieces, seed, val_f1, s, secs, epochs):
 
 def run(sp_name, note=""):
     """Train one configuration over all seeds. Returns (val_agg, test_agg)."""
-    path = f"artifacts/sp_{sp_name}.model"
-    if not os.path.exists(path):
-        print(f"  MISSING {path} - run notebooks/06_subword_tokenizer.py first")
+    sp, n_pieces = load_tokenizer(sp_name)
+    if n_pieces < 0:
         return None, None
-    sp = load_sentencepiece(path)
-    n_pieces = sp.get_piece_size()
 
     model_fn = build(sp, n_pieces)
     params = model_fn().count_parameters()
     tag = make_tag(sp_name)
-    print(f"\n--- {sp_name}  ({n_pieces:,} pieces)  {note}")
+    print(f"\n--- {sp_name}  ({n_pieces:,} pieces)  encoder {args.encoder}  {note}")
     print(f"    tag: {tag}")
     print(f"    trainable {params['trainable']:,}  "
           f"(subword channel {params['subword_channel']:,}, "
@@ -280,18 +318,14 @@ if args.sweep:
 GRAPHEME CONTROL (bpe_8000 vs unigram_8000, same vocabulary size)
   difference {d:+.4f}, pooled std {pooled:.4f}""")
         if abs(d) <= max(pooled, 1e-6):
-            print("  Inside the noise. Step 6's grapheme finding does not translate")
-            print("  into an F1 difference here. Report it as a tokenizer-quality")
-            print("  observation, NOT as an accuracy claim.")
+            print("  Within one pooled standard deviation: no measurable difference.")
         elif d > 0:
-            print("  BPE wins. The grapheme finding translates into accuracy.")
-            print("  This is a real result and belongs in the paper.")
+            print("  BPE scores higher.")
         else:
-            print("  Unigram wins despite breaking more graphemes. Report honestly -")
-            print("  root-sharing evidently matters more than grapheme integrity here.")
+            print("  Unigram scores higher.")
 
     print(f"""
-NEXT: run the winner with the frozen Phase 1 settings and score test once.
+Final run for the best setting:
 
     python notebooks/07_subword_model.py --final --sp {best[0]}
 """)
@@ -319,30 +353,17 @@ else:
   + subword channel             {f1:.4f} +/- {std:.4f}
   change                        {delta:+.4f}
 
-  our word list                 {WORDLIST_F1:.4f}   <- still the floor to beat
+  lexicon baseline              {WORDLIST_F1:.4f}
   published XLM-R               0.7200
 
   precision {ta['offensive_precision']['mean']:.4f}   recall {ta['offensive_recall']['mean']:.4f}
   Phase 1 was precision 0.7452, recall 0.4979.""")
 
     if delta > 2 * noise:
-        print(f"\n  CLEAR GAIN. {delta:+.4f} is more than twice the noise ({noise:.4f}).")
+        print(f"\n  Clear gain: {delta:+.4f}, more than twice the standard deviation ({noise:.4f}).")
     elif delta > noise:
-        print(f"\n  MODEST GAIN. {delta:+.4f} exceeds the noise ({noise:.4f}) but not by much.")
-        print("  Report with the standard deviation and do not overstate it.")
+        print(f"\n  Modest gain: {delta:+.4f}, more than one standard deviation ({noise:.4f}).")
     elif delta > -noise:
-        print(f"\n  NO MEASURABLE EFFECT. {delta:+.4f} is inside the noise ({noise:.4f}).")
-        print("  Report it as such. A careful null result on a low-resource")
-        print("  language is a legitimate finding, and hiding it is not an option.")
+        print(f"\n  No measurable effect: {delta:+.4f}, within one standard deviation ({noise:.4f}).")
     else:
-        print(f"\n  IT HURT. {delta:+.4f}. Report honestly, then investigate:")
-        print("    - did recall rise while precision collapsed?")
-        print("    - is the subword channel too large relative to 6,000 tweets?")
-        print("    - try --pooling mean, or a smaller --subword-dim")
-
-    print(f"""
-  ABLATION ROWS STILL OWED
-    --pooling mean            does piece ORDER matter?
-    --no-word-channel         is fastText still needed?
-  Both at 5 seeds, same settings.
-""")
+        print(f"\n  Lower: {delta:+.4f}.")

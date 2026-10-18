@@ -181,8 +181,8 @@ def train_val_split(train_df, val_fraction: float = VAL_FRACTION, seed: int = VA
 def load_splits(drop_length_mismatch: bool = False):
     """Load train and test.
 
-    drop_length_mismatch: only enable after you have counted these rows in
-    the exploration report and recorded the decision in the README.
+    drop_length_mismatch: drop rows whose rationale length differs from the
+    token count (off by default; see notebooks/01_data_exploration.py).
     """
     train = load_sold("train")
     test = load_sold("test")

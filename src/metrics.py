@@ -44,8 +44,8 @@ Three facts established by reading that code:
 
 4. EMPTY RATIONALES BECOME ALL ZEROS, AND THOSE ROWS ARE KEPT.
    sinhala_mudes.py: `if len(labels) == 0: ... label 0 for every token`.
-   No row is dropped. This confirms our loader's behaviour and our README
-   decision to keep the 209 train / 74 test OFF-with-no-offensive-token rows.
+   No row is dropped. This matches our loader, which also keeps the 209 train /
+   74 test OFF-with-no-offensive-token rows.
 
 5. SHORT PREDICTIONS ARE PADDED WITH THE NEGATIVE CLASS.
    If a model returns fewer predictions than the tweet has tokens, they pad

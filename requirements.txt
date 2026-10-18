@@ -1,9 +1,15 @@
-datasets<3.0.0
-pandas
-numpy
-pyarrow
-scikit-learn
+# core: everything in notebooks/ and src/
 torch
 pytorch-crf
-matplotlib
 sentencepiece
+numpy
+pandas
+pyarrow
+scikit-learn
+datasets<3.0.0
+
+# notebooks/11_transformer_efficiency.py only
+transformers
+
+# notebooks/12_fasttext_oov.py only
+fasttext
